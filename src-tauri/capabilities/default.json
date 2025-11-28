@@ -5,6 +5,59 @@
   "windows": ["main"],
   "permissions": [
     "core:default",
-    "opener:default"
+    "log:default",
+    "os:default",
+    {
+      "identifier": "fs:allow-mkdir",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-open",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-read",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-read-dir",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-read-file",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-appdata-read",
+      "allow": ["*"]
+    },
+    {
+      "identifier": "fs:allow-appdata-read-recursive",
+      "allow": ["*"]
+    },
+    {
+      "identifier": "fs:allow-create",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-exists",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-write",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-write-file",
+      "allow": ["**"]
+    },
+    {
+      "identifier": "fs:allow-appdata-write",
+      "allow": ["*"]
+    },
+    {
+      "identifier": "fs:allow-appdata-write-recursive",
+      "allow": ["*"]
+    }
   ]
 }

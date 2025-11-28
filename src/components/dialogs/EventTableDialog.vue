@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, watch } from "vue";
 import Dialog from "../common/Dialog.vue";
+import { info } from '@tauri-apps/plugin-log';
 
 interface EventData {
   time: number;
@@ -72,19 +73,19 @@ const toggleDisplay = () => {
 // 导出事件CSV
 const exportEventCsv = () => {
   // 实现导出CSV逻辑
-  console.log("导出事件CSV");
+  info("导出事件CSV");
 };
 
 // 导出按键谱
 const exportKeyNotation = () => {
   // 实现导出按键谱逻辑
-  console.log("导出按键谱");
+  info("导出按键谱");
 };
 
 // 双击事件处理
 const handleEventDoubleClick = (event: EventData) => {
   // 实现双击事件处理逻辑
-  console.log("双击事件:", event);
+  info(`双击事件: ${JSON.stringify(event)}`);
 };
 
 // 生成示例数据

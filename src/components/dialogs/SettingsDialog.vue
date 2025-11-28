@@ -1,7 +1,12 @@
 <script setup lang="ts">
-import { ref, reactive, watch } from "vue";
+import { ref, reactive, computed, inject, watch } from "vue";
 import Dialog from "../common/Dialog.vue";
 import themeConfig from "../../config/theme.json";
+import { info } from '@tauri-apps/plugin-log';
+
+// 从父组件注入主题相关方法和状态
+const updateTheme = inject<(themeName: string) => Promise<void>>('updateTheme');
+const currentTheme = inject<import('vue').Ref<string>>('currentTheme');
 
 interface SettingsDialogProps {
   visible: boolean;
@@ -34,20 +39,29 @@ const shortcuts = reactive({
 
 // 主题设置
 const themeSettings = reactive({
-  currentTheme: "default"
+  currentTheme: currentTheme?.value || "default"
+});
+
+// 主题选项
+const themeOptions = computed(() => {
+  return themeConfig.theme.map(theme => ({
+    value: theme.name,
+    label: theme.name === 'default' ? '默认' : theme.name === 'dark' ? '黑夜' : '少女粉'
+  }));
 });
 
 // 预设配置选项
 const presetConfigs = [
-  { name: "默认36键", minNote: 48, maxNote: 83 },
-  { name: "扩展48键", minNote: 40, maxNote: 87 },
-  { name: "自定义范围", minNote: 0, maxNote: 127 }
+  { id: "default", name: "默认配置", minNote: 48, maxNote: 83 },
+  { id: "basic", name: "基础模式", minNote: 40, maxNote: 87 },
+  { id: "advanced", name: "高级模式", minNote: 0, maxNote: 127 }
 ];
 
 // 黑键模式选项
 const blackKeyModes = [
-  { value: "support_black_key", label: "支持黑键" },
-  { value: "no_black_key", label: "不支持黑键" }
+  { value: "none", label: "无黑键" },
+  { value: "all", label: "全部黑键" },
+  { value: "selective", label: "选择性黑键" }
 ];
 
 // 快捷键修饰键选项
@@ -59,12 +73,17 @@ const modifierOptions = [
 ];
 
 // 保存设置
-const saveSettings = () => {
+const saveSettings = async () => {
   const settings = {
     keySettings: { ...keySettings },
     shortcuts: { ...shortcuts },
     themeSettings: { ...themeSettings }
   };
+  
+  // 更新主题
+  if (updateTheme && themeSettings.currentTheme !== currentTheme?.value) {
+    await updateTheme(themeSettings.currentTheme);
+  }
   
   emit("settingsSaved", settings);
   emit("update:visible", false);
@@ -90,14 +109,17 @@ const resetSettings = () => {
   shortcuts.PREV_SONG = "alt+up";
   shortcuts.NEXT_SONG = "alt+down";
   
-  themeSettings.currentTheme = "default";
+  themeSettings.currentTheme = currentTheme?.value || "default";
 };
 
 // 应用预设配置
-const applyPresetConfig = (preset: any) => {
-  keySettings.minNote = preset.minNote;
-  keySettings.maxNote = preset.maxNote;
-  // 如果是自定义范围，可能需要特殊处理
+const applyPresetConfig = (presetId: string) => {
+  info(`应用预设配置: ${presetId}`);
+  const preset = presetConfigs.find(p => p.id === presetId);
+  if (preset) {
+    keySettings.minNote = preset.minNote;
+    keySettings.maxNote = preset.maxNote;
+  }
 };
 
 // 恢复默认快捷键
@@ -119,10 +141,31 @@ const getNoteName = (note: number): string => {
 // 监听可见性变化
 watch(() => props.visible, (newVal) => {
   if (newVal) {
-    // 可以在这里加载现有设置
-    console.log("加载设置");
+    // 加载当前主题设置
+    if (currentTheme) {
+      themeSettings.currentTheme = currentTheme.value;
+    }
+    info("加载设置");
   }
 });
+
+// 监听当前主题变化，同步到设置中
+watch(() => currentTheme?.value, (newVal) => {
+  if (newVal && newVal !== themeSettings.currentTheme) {
+    themeSettings.currentTheme = newVal;
+  }
+});
+
+// 获取主题预览样式
+const getThemePreviewStyle = (themeName: string) => {
+  const theme = themeConfig.theme.find(t => t.name === themeName);
+  if (!theme) return {};
+  
+  return {
+    backgroundColor: theme.bg,
+    border: `2px solid ${theme.primary}`
+  };
+};
 </script>
 
 <template>
@@ -166,15 +209,15 @@ watch(() => props.visible, (newVal) => {
         <div class="setting-section">
           <h4 class="section-title">预设配置</h4>
           <div class="preset-buttons">
-            <button 
-              v-for="preset in presetConfigs" 
-              :key="preset.name"
-              class="btn btn-small"
-              @click="applyPresetConfig(preset)"
-            >
-              {{ preset.name }}
-            </button>
-          </div>
+          <button 
+            v-for="preset in presetConfigs" 
+            :key="preset.id"
+            class="btn btn-small"
+            @click="applyPresetConfig(preset.id)"
+          >
+            {{ preset.name }}
+          </button>
+        </div>
         </div>
         
         <!-- 音符范围设置 -->
@@ -208,21 +251,13 @@ watch(() => props.visible, (newVal) => {
         
         <!-- 黑键模式 -->
         <div class="setting-section">
-          <h4 class="section-title">黑键模式</h4>
-          <div class="radio-group">
-            <div 
-              v-for="mode in blackKeyModes" 
-              :key="mode.value"
-              class="radio-item"
-            >
-              <input 
-                type="radio" 
-                :id="mode.value"
-                :value="mode.value"
-                v-model="keySettings.blackKeyMode"
-              />
-              <label :for="mode.value">{{ mode.label }}</label>
-            </div>
+          <h4 class="section-title">黑键设置</h4>
+          <div class="black-key-settings">
+            <select v-model="keySettings.blackKeyMode" class="setting-select">
+              <option v-for="mode in blackKeyModes" :key="mode.value" :value="mode.value">
+                {{ mode.label }}
+              </option>
+            </select>
           </div>
         </div>
       </div>
@@ -260,7 +295,7 @@ watch(() => props.visible, (newVal) => {
             </div>
           </div>
           
-          <button class="btn btn-small mt-2" @click="restoreDefaultShortcuts">
+          <button @click="restoreDefaultShortcuts" class="restore-button">
             恢复默认快捷键
           </button>
         </div>
@@ -272,19 +307,19 @@ watch(() => props.visible, (newVal) => {
           <h4 class="section-title">主题选择</h4>
           <div class="theme-options">
             <div 
-              v-for="theme in themeConfig.theme" 
-              :key="theme.name"
+              v-for="option in themeOptions" 
+              :key="option.value"
               class="theme-option"
-              :class="{ active: themeSettings.currentTheme === theme.name }"
-              @click="themeSettings.currentTheme = theme.name"
+              :class="{ active: themeSettings.currentTheme === option.value }"
+              @click="themeSettings.currentTheme = option.value"
             >
-              <div class="theme-preview" :style="{ backgroundColor: theme.bg }">
-                <div class="theme-color" :style="{ backgroundColor: theme.primary }"></div>
-                <div class="theme-color" :style="{ backgroundColor: theme.success }"></div>
-                <div class="theme-color" :style="{ backgroundColor: theme.info }"></div>
+              <div class="theme-preview" :style="{ backgroundColor: themeConfig.theme.find(t => t.name === option.value)?.bg || '#ffffff' }">
+                <div class="theme-color" :style="{ backgroundColor: themeConfig.theme.find(t => t.name === option.value)?.primary || '#007bff' }"></div>
+                <div class="theme-color" :style="{ backgroundColor: themeConfig.theme.find(t => t.name === option.value)?.success || '#28a745' }"></div>
+                <div class="theme-color" :style="{ backgroundColor: themeConfig.theme.find(t => t.name === option.value)?.info || '#17a2b8' }"></div>
               </div>
               <span class="theme-name">
-                {{ theme.name === 'default' ? '默认' : theme.name === 'dark' ? '黑夜' : '少女粉' }}
+                {{ option.label }}
               </span>
             </div>
           </div>
@@ -294,8 +329,10 @@ watch(() => props.visible, (newVal) => {
     
     <!-- 底部按钮 -->
     <template #footer>
-      <button class="btn btn-secondary" @click="cancelSettings">取消</button>
-      <button class="btn btn-primary" @click="saveSettings">保存</button>
+      <div class="dialog-footer">
+        <button @click="cancelSettings" class="cancel-button">取消</button>
+        <button @click="saveSettings" class="save-button">保存</button>
+      </div>
     </template>
   </Dialog>
 </template>
@@ -520,5 +557,44 @@ watch(() => props.visible, (newVal) => {
 
 .btn-secondary:hover {
   background-color: var(--active);
+}
+
+/* 对话框底部按钮样式 */
+.dialog-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.75rem;
+  padding: 0.5rem 1rem;
+}
+
+.cancel-button, .save-button {
+  padding: 0.4rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  font-size: 0.9rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.cancel-button {
+  background-color: var(--inputbg);
+  color: var(--inputfg);
+  border-color: var(--border);
+}
+
+.cancel-button:hover {
+  background-color: var(--active);
+}
+
+.save-button {
+  background-color: var(--primary);
+  color: var(--selectfg);
+  border-color: var(--primary);
+}
+
+.save-button:hover {
+  background-color: var(--dark);
+  border-color: var(--dark);
 }
 </style>

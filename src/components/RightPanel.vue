@@ -3,6 +3,7 @@ import { ref } from "vue";
 import EventTableDialog from "./dialogs/EventTableDialog.vue";
 import SettingsDialog from "./dialogs/SettingsDialog.vue";
 import HelpDialog from "./dialogs/HelpDialog.vue";
+import { info } from '@tauri-apps/plugin-log';
 
 // 右侧面板组件
 const currentMinNote = ref(48);
@@ -112,7 +113,7 @@ const showHelp = () => {
 
 // 处理设置保存
 const handleSettingsSaved = (settings: any) => {
-  console.log("设置已保存:", settings);
+  info(`设置已保存: ${JSON.stringify(settings)}`);
   // 这里可以根据需要更新组件中的相关设置
 };
 </script>
@@ -262,20 +263,20 @@ const handleSettingsSaved = (settings: any) => {
   background-color: var(--bg);
   border: 1px solid var(--border);
   border-radius: 6px;
-  padding: 0.75rem;
-  margin-bottom: 0.75rem;
+  padding: 0.5rem;
+  margin-bottom: 0.4rem;
 }
 
 .frame-title {
   font-size: 1rem;
   font-weight: 600;
   color: var(--fg);
-  margin: 0 0 0.75rem 0;
+  margin: 0 0 0.5rem 0;
 }
 
 /* 音轨详情区域 */
 .all-tracks-section {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.4rem;
 }
 
 .checkbox-item {
@@ -295,7 +296,7 @@ const handleSettingsSaved = (settings: any) => {
 }
 
 .current-song-section {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.4rem;
 }
 
 .song-info {
@@ -328,11 +329,11 @@ const handleSettingsSaved = (settings: any) => {
 .track-item {
   display: flex;
   gap: 0.75rem;
-  padding: 0.75rem;
+  padding: 0.5rem;
   background-color: var(--active);
   border: 1px solid var(--border);
   border-radius: 4px;
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.3rem;
 }
 
 .track-item:last-child {
@@ -454,7 +455,7 @@ const handleSettingsSaved = (settings: any) => {
 
 /* 操作区域 */
 .time-section {
-  margin-bottom: 0.75rem;
+  margin-bottom: 0.4rem;
 }
 
 .time-label {
@@ -482,7 +483,7 @@ const handleSettingsSaved = (settings: any) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 1rem;
   border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 0.9rem;
