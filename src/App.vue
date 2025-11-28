@@ -1,8 +1,10 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, provide } from "vue";
 import themeConfig from "./config/theme.json";
 import LeftPanel from "./components/LeftPanel.vue";
 import RightPanel from "./components/RightPanel.vue";
+import settingsManager from "./utils/settingsManager";
+import { error } from '@tauri-apps/plugin-log';
 
 // 主题管理
 const currentTheme = ref("default");
@@ -10,12 +12,19 @@ const themes = themeConfig.theme;
 const colors = ref(themes.find(t => t.name === currentTheme.value) || themes[0]);
 
 // 切换主题
-const changeTheme = (themeName: string) => {
+const changeTheme = async (themeName: string) => {
   currentTheme.value = themeName;
   const theme = themes.find(t => t.name === themeName);
   if (theme) {
     colors.value = theme;
     updateCSSVariables(theme);
+    
+    // 保存主题设置
+      try {
+        await settingsManager.saveTheme(themeName);
+        } catch (err) {
+          error(`保存主题失败: ${err}`);
+      }
   }
 };
 
@@ -30,9 +39,24 @@ const updateCSSVariables = (theme: any) => {
 };
 
 // 初始化主题
-onMounted(() => {
-  updateCSSVariables(colors.value);
+onMounted(async () => {
+  try {
+    // 从设置文件加载主题
+    const savedTheme = await settingsManager.loadTheme();
+    currentTheme.value = savedTheme;
+    const theme = themes.find(t => t.name === savedTheme) || themes[0];
+    colors.value = theme;
+    updateCSSVariables(theme);
+    } catch (err) {
+      error(`加载主题失败: ${err}`);
+    // 使用默认主题
+    updateCSSVariables(colors.value);
+  }
 });
+
+// 提供主题更新方法给子组件
+provide('updateTheme', changeTheme);
+provide('currentTheme', currentTheme);
 </script>
 
 <template>
@@ -161,7 +185,7 @@ body {
 }
 
 .panel-header {
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   background-color: var(--active);
   border-bottom: 1px solid var(--border);
   font-weight: 600;
@@ -172,7 +196,7 @@ body {
 }
 
 .panel-content {
-  padding: 1rem;
+  padding: 0.5rem 1rem;
   flex: 1;
   overflow-y: auto;
 }

@@ -116,13 +116,13 @@ const songSelected = (file: string) => {
 }
 
 .file-select-section {
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   background-color: var(--bg);
   border-bottom: 1px solid var(--border);
 }
 
 .search-section {
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   background-color: var(--bg);
   border-bottom: 1px solid var(--border);
 }
@@ -169,7 +169,7 @@ const songSelected = (file: string) => {
 }
 
 .song-item {
-  padding: 0.75rem 1rem;
+  padding: 0.5rem 1rem;
   border-bottom: 1px solid var(--border);
   cursor: pointer;
   transition: background-color 0.2s ease;
@@ -194,7 +194,7 @@ const songSelected = (file: string) => {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0.5rem 1rem;
+  padding: 0.4rem 1rem;
   border: 1px solid var(--border);
   border-radius: 4px;
   font-size: 0.9rem;

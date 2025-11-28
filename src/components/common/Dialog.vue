@@ -190,7 +190,7 @@ onBeforeUnmount(() => {
 }
 
 .dialog-footer {
-  padding: 0.75rem 1rem;
+  padding: 0.4rem 0.6rem;
   border-top: 1px solid var(--border);
   display: flex;
   justify-content: flex-end;
