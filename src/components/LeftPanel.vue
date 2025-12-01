@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, defineEmits } from "vue";
 import { Window } from '@tauri-apps/api/window';
 import { info } from '@tauri-apps/plugin-log';
 import { open } from '@tauri-apps/plugin-dialog'; // 引入 dialog API
@@ -13,6 +13,8 @@ const searchText = ref("搜索歌曲...");
 const midiFiles = ref<string[]>(["测试歌曲-忘记时间-胡歌.mid"]);
 const allMidiFiles = ref<string[]>(["测试歌曲-忘记时间-胡歌.mid"]); // 用于存储所有MIDI文件
 const selectedFile = ref<string>("");
+
+const emit = defineEmits(['update:selectedSong']);
 
 // 窗口置顶切换
 const toggleStayOnTop = async () => {
@@ -112,7 +114,7 @@ const filterSongs = () => {
 // 歌曲选中
 const songSelected = (file: string) => {
   selectedFile.value = file;
-  // 通知父组件更新选中的MIDI文件
+  emit('update:selectedSong', file);
 };
 
 // 加载MIDI文件列表

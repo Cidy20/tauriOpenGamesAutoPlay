@@ -8,6 +8,7 @@ import { error } from '@tauri-apps/plugin-log';
 
 // 主题管理
 const currentTheme = ref("default");
+const selectedMidiFile = ref<string | null>(null);
 const themes = themeConfig.theme;
 const colors = ref(themes.find(t => t.name === currentTheme.value) || themes[0]);
 
@@ -76,10 +77,10 @@ provide('currentTheme', currentTheme);
     <!-- 主内容区 -->
     <main class="main-content">
       <!-- 左侧面板 -->
-      <LeftPanel />
+      <LeftPanel @update:selectedSong="selectedMidiFile = $event" />
 
       <!-- 右侧面板 -->
-      <RightPanel />
+      <RightPanel :selectedMidiFile="selectedMidiFile" />
     </main>
   </div>
 </template>

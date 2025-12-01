@@ -239,7 +239,8 @@ class SettingsManager {
               // 确保所有必需的字段都存在，并进行安全合并
               const settings: AppSettings = {
                 themeSettings: { ...this.defaultSettings.themeSettings, ...(parsedSettings.themeSettings || {}) },
-                shortcuts: { ...(this.defaultSettings.shortcuts || {}), ...(parsedSettings.shortcuts || {}) }
+                shortcuts: { ...(this.defaultSettings.shortcuts || {}), ...(parsedSettings.shortcuts || {}) },
+                midiFolderPath: parsedSettings.midiFolderPath !== undefined ? parsedSettings.midiFolderPath : this.defaultSettings.midiFolderPath
               };
               
               info(`加载的设置: ${JSON.stringify(settings)}`);

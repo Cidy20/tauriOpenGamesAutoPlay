@@ -1,5 +1,9 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { ref, defineProps } from "vue";
+
+const props = defineProps({
+  selectedMidiFile: { type: [String, null], default: null },
+});
 import EventTableDialog from "./dialogs/EventTableDialog.vue";
 import SettingsDialog from "./dialogs/SettingsDialog.vue";
 import HelpDialog from "./dialogs/HelpDialog.vue";
@@ -8,7 +12,7 @@ import { info } from '@tauri-apps/plugin-log';
 // 右侧面板组件
 const currentMinNote = ref(48);
 const currentMaxNote = ref(83);
-const selectedMidiFile = ref("");
+
 const remainingTime = ref("00:00");
 const allTracksSelected = ref(true);
 const tracks = ref([
@@ -123,48 +127,36 @@ const handleSettingsSaved = (settings: any) => {
     <!-- 音轨详情区域 -->
     <div class="tracks-frame">
       <h3 class="frame-title">
-        音轨详情【 当前播放范围：{{ getNoteName(currentMinNote) }}({{ currentMinNote }}) - {{ getNoteName(currentMaxNote) }}({{ currentMaxNote }}) 】
+        音轨详情【 当前播放范围：{{ getNoteName(currentMinNote) }}({{ currentMinNote }}) - {{ getNoteName(currentMaxNote) }}({{
+        currentMaxNote }}) 】
       </h3>
-      
-      <!-- 所有音轨复选框 -->
-      <div class="all-tracks-section">
-        <div class="checkbox-item">
-          <input 
-            type="checkbox" 
-            id="allTracks" 
-            v-model="allTracksSelected"
-            @change="toggleSelectAll"
-          />
-          <label for="allTracks">所有音轨</label>
-        </div>
-      </div>
-      
+
       <!-- 当前歌曲名称 -->
       <div class="current-song-section">
         <div class="song-info">
           <span class="label">当前歌曲：</span>
-          <span class="value">{{ selectedMidiFile || "未选择" }}</span>
+          <span class="value">{{ props.selectedMidiFile || "未选择" }}</span>
         </div>
       </div>
-      
+
+      <!-- 所有音轨复选框 -->
+      <div class="all-tracks-section">
+        <div class="checkbox-item">
+          <input type="checkbox" id="allTracks" v-model="allTracksSelected" @change="toggleSelectAll" />
+          <label for="allTracks">所有音轨</label>
+        </div>
+      </div>
+
       <!-- 音轨列表 -->
       <div class="tracks-list-section">
         <div class="tracks-list">
-          <div 
-            v-for="track in tracks" 
-            :key="track.id"
-            class="track-item"
-          >
+          <div v-for="track in tracks" :key="track.id" class="track-item">
             <!-- 音轨选择 -->
             <div class="track-selection">
-              <input 
-                type="checkbox" 
-                :id="`track-${track.id}`" 
-                v-model="track.selected"
-                @change="toggleTrackSelection(track.id)"
-              />
+              <input type="checkbox" :id="`track-${track.id}`" v-model="track.selected"
+                @change="toggleTrackSelection(track.id)" />
             </div>
-            
+
             <!-- 音轨信息和分析 -->
             <div class="track-info">
               <div class="track-header">
@@ -174,7 +166,7 @@ const handleSettingsSaved = (settings: any) => {
                 <p>{{ track.analysis }}</p>
               </div>
             </div>
-            
+
             <!-- 转音设置 -->
             <div class="transpose-settings">
               <div class="setting-group">
@@ -201,16 +193,16 @@ const handleSettingsSaved = (settings: any) => {
         </div>
       </div>
     </div>
-    
+
     <!-- 操作区域 -->
     <div class="operation-frame">
       <h3 class="frame-title">操作</h3>
-      
+
       <!-- 剩余时间 -->
       <div class="time-section">
         <div class="time-label">剩余时间: {{ remainingTime }}</div>
       </div>
-      
+
       <!-- 控制按钮 -->
       <div class="control-buttons-section">
         <button class="btn btn-success" @click="togglePlay">播放</button>
@@ -219,11 +211,11 @@ const handleSettingsSaved = (settings: any) => {
         <button class="btn btn-info" @click="toggleMidiPlayback">试听MIDI</button>
       </div>
     </div>
-    
+
     <!-- 其他功能 -->
     <div class="other-frame">
       <h3 class="frame-title">其他</h3>
-      
+
       <!-- 其他按钮 -->
       <div class="other-buttons-section">
         <button class="btn btn-secondary" @click="showEventTable">事件表</button>
@@ -232,18 +224,11 @@ const handleSettingsSaved = (settings: any) => {
       </div>
     </div>
   </section>
-  
+
   <!-- 对话框组件 -->
-  <EventTableDialog 
-    v-model:visible="showEventTableDialog"
-  />
-  <SettingsDialog 
-    v-model:visible="showSettingsDialog"
-    @settingsSaved="handleSettingsSaved"
-  />
-  <HelpDialog 
-    v-model:visible="showHelpDialog"
-  />
+  <EventTableDialog v-model:visible="showEventTableDialog" />
+  <SettingsDialog v-model:visible="showSettingsDialog" @settingsSaved="handleSettingsSaved" />
+  <HelpDialog v-model:visible="showHelpDialog" />
 </template>
 
 <style scoped>
