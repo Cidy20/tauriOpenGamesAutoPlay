@@ -6,6 +6,10 @@ import { open } from '@tauri-apps/plugin-dialog'; // 引入 dialog API
 import { readDir } from '@tauri-apps/plugin-fs'; // 引入 fs API
 import settingsManager from '../utils/settingsManager'; // 引入设置管理器
 
+import { join } from '@tauri-apps/api/path';
+
+// ... (imports)
+
 // 左侧面板组件
 const stayOnTop = ref(false);
 info(`stayOnTop变量初始化: ${stayOnTop.value}`);
@@ -13,6 +17,7 @@ const searchText = ref("搜索歌曲...");
 const midiFiles = ref<string[]>(["测试歌曲-忘记时间-胡歌.mid"]);
 const allMidiFiles = ref<string[]>(["测试歌曲-忘记时间-胡歌.mid"]); // 用于存储所有MIDI文件
 const selectedFile = ref<string>("");
+const currentFolderPath = ref<string>("");
 
 const emit = defineEmits(['update:selectedSong']);
 
@@ -21,23 +26,23 @@ const toggleStayOnTop = async () => {
   try {
     const currentWindow = Window.getCurrent();
     info('获取当前窗口实例成功');
-    
+
     // 首先获取当前的实际状态
     const currentState = await currentWindow.isAlwaysOnTop();
     info(`获取到的当前实际窗口状态: ${currentState}`);
-    
+
     // 计算目标状态（与当前状态相反）
     const targetState = !currentState;
     info(`准备切换窗口置顶状态到: ${targetState}`);
-    
+
     // 设置新状态
     await currentWindow.setAlwaysOnTop(targetState);
     info(`窗口置顶状态已设置为: ${targetState}`);
-    
+
     // 验证设置是否生效
     const verificationState = await currentWindow.isAlwaysOnTop();
     info(`验证后的窗口置顶状态: ${verificationState}`);
-    
+
     // 更新本地状态变量
     stayOnTop.value = verificationState;
     info(`本地stayOnTop变量已更新为: ${stayOnTop.value}`);
@@ -112,14 +117,25 @@ const filterSongs = () => {
 };
 
 // 歌曲选中
-const songSelected = (file: string) => {
+const songSelected = async (file: string) => {
   selectedFile.value = file;
-  emit('update:selectedSong', file);
+  if (currentFolderPath.value) {
+    try {
+      const fullPath = await join(currentFolderPath.value, file);
+      emit('update:selectedSong', fullPath);
+    } catch (e) {
+      info(`拼接路径失败: ${e}`);
+      emit('update:selectedSong', file); // Fallback
+    }
+  } else {
+    emit('update:selectedSong', file);
+  }
 };
 
 // 加载MIDI文件列表
 const loadMidiFiles = async (folderPath: string) => {
   try {
+    currentFolderPath.value = folderPath;
     const entries = await readDir(folderPath);
     const midiFilesList = entries
       .filter((entry) => entry.name?.endsWith(".mid") || entry.name?.endsWith(".midi"))
@@ -142,47 +158,32 @@ const loadMidiFiles = async (folderPath: string) => {
     <!-- 置顶复选框 -->
     <div class="top-section">
       <div class="checkbox-item">
-        <input 
-          type="checkbox" 
-          id="stayOnTop" 
-          v-model="stayOnTop"
-          @change="toggleStayOnTop"
-        />
+        <input type="checkbox" id="stayOnTop" v-model="stayOnTop" @change="toggleStayOnTop" />
         <label for="stayOnTop">窗口置顶</label>
       </div>
     </div>
-    
+
     <!-- 文件选择按钮 -->
     <div class="file-select-section">
       <button class="btn btn-primary" @click="selectDirectory">
         选择MIDI文件夹
       </button>
     </div>
-    
+
     <!-- 搜索框 -->
     <div class="search-section">
-      <input 
-        type="text" 
-        v-model="searchText"
-        @focus="searchText === '搜索歌曲...' && (searchText = '')"
-        @keyup="filterSongs"
-        placeholder="搜索歌曲..."
-      />
+      <input type="text" v-model="searchText" @focus="searchText === '搜索歌曲...' && (searchText = '')"
+        @keyup="filterSongs" placeholder="搜索歌曲..." />
     </div>
-    
+
     <!-- 歌曲列表 -->
     <div class="song-list-section">
       <div class="song-list-header">
         <h3>歌曲列表</h3>
       </div>
       <div class="song-list">
-        <div 
-          v-for="file in midiFiles" 
-          :key="file"
-          class="song-item"
-          :class="{ active: selectedFile === file }"
-          @click="songSelected(file)"
-        >
+        <div v-for="file in midiFiles" :key="file" class="song-item" :class="{ active: selectedFile === file }"
+          @click="songSelected(file)">
           <span class="song-name">{{ file }}</span>
         </div>
       </div>

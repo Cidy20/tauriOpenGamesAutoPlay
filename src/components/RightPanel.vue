@@ -1,81 +1,322 @@
+```vue
 <script setup lang="ts">
-import { ref, defineProps } from "vue";
+import { ref, defineProps, watch, onMounted, computed } from "vue";
+import { invoke } from "@tauri-apps/api/core";
+import EventTableDialog from "./dialogs/EventTableDialog.vue";
+import SettingsDialog from "./dialogs/SettingsDialog.vue";
+import { info, error } from '@tauri-apps/plugin-log';
+import { getNoteName, groupForNote } from "../config/groups";
+import { useSettingsStore } from "../store/settings";
 
 const props = defineProps({
   selectedMidiFile: { type: [String, null], default: null },
 });
-import EventTableDialog from "./dialogs/EventTableDialog.vue";
-import SettingsDialog from "./dialogs/SettingsDialog.vue";
-import HelpDialog from "./dialogs/HelpDialog.vue";
-import { info } from '@tauri-apps/plugin-log';
+
+// 使用 SettingsStore
+const settingsStore = useSettingsStore();
 
 // 右侧面板组件
 const currentMinNote = ref(48);
 const currentMaxNote = ref(83);
 
+// 初始化 store
+onMounted(async () => {
+  await settingsStore.init();
+  currentMinNote.value = settingsStore.state.keySettings.minNote;
+  currentMaxNote.value = settingsStore.state.keySettings.maxNote;
+});
+
+// 监听 store 变化
+watch(() => settingsStore.state.keySettings, (newSettings) => {
+  currentMinNote.value = newSettings.minNote;
+  currentMaxNote.value = newSettings.maxNote;
+}, { deep: true });
+
 const remainingTime = ref("00:00");
 const allTracksSelected = ref(true);
-const tracks = ref([
-  {
-    id: 0,
-    name: "钢琴",
-    noteCount: 120,
-    selected: true,
-    transpose: 0,
-    octave: 0,
-    analysis: "音轨分析结果：包含C4到A5的音符，适合当前播放范围"
-  }
-]);
 
-// 获取音符名称
-const getNoteName = (note: number): string => {
-  const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const octave = Math.floor(note / 12) - 1;
-  const noteIndex = note % 12;
-  return `${noteNames[noteIndex]}${octave}`;
-};
+interface TrackAnalysis {
+  max_note: number | null;
+  min_note: number | null;
+  max_note_name: string;
+  min_note_name: string;
+  max_note_group: string;
+  min_note_group: string;
+  upper_over_limit: number;
+  lower_over_limit: number;
+  is_max_over_limit: boolean;
+  is_min_over_limit: boolean;
+  suggested_max_transpose: number | null;
+  suggested_max_octave: number | null;
+  suggested_min_transpose: number | null;
+  suggested_min_octave: number | null;
+}
+
+interface Track {
+  id: number;
+  name: string;
+  noteCount: number;
+  selected: boolean;
+  transpose: number;
+  octave: number;
+  analysis: TrackAnalysis;
+}
+
+const tracks = ref<Track[]>([]);
+const displayFileName = ref("");
+const midiEvents = ref<any[]>([]);
+const originalMidiEvents = ref<any[]>([]); // 保存原始事件数据
+
+// 监听文件选择变化
+watch(() => props.selectedMidiFile, async (newFile) => {
+  if (newFile) {
+    // 提取文件名用于显示
+    displayFileName.value = newFile.split(/[/\\]/).pop() || newFile;
+
+    try {
+      info(`正在解析MIDI文件: ${newFile}`);
+
+      // 从设置中获取min/max note
+      const settingsStore = useSettingsStore();
+      const minNote = settingsStore.state.keySettings.minNote;
+      const maxNote = settingsStore.state.keySettings.maxNote;
+
+      // 传递min/max note给后端
+      const result: any = await invoke("parse_midi", {
+        filePath: newFile,
+        minNote: minNote,
+        maxNote: maxNote
+      });
+      info("解析成功");
+
+      // 更新分析结果
+      // 注意：这里不再覆盖 currentMinNote/MaxNote，因为它们由用户设置决定
+      // 但我们可以显示 MIDI 文件的实际范围作为参考，或者仅在首次加载时设置？
+      // 根据需求，min/max note 是用户设定的显示/播放范围，而不是 MIDI 文件的实际范围
+      // 所以这里不需要更新 currentMinNote/MaxNote
+
+      // 更新事件数据
+      if (result.events) {
+        originalMidiEvents.value = JSON.parse(JSON.stringify(result.events)); // 深拷贝
+        midiEvents.value = result.events;
+      } else {
+        originalMidiEvents.value = [];
+        midiEvents.value = [];
+      }
+
+      // 更新音轨列表
+      if (result.tracks) {
+        tracks.value = result.tracks.map((t: any) => ({
+          id: t.id,
+          name: t.name,
+          noteCount: t.note_count,
+          selected: true, // 默认全选
+          transpose: 0,
+          octave: 0,
+          analysis: t.analysis // 使用后端返回的详细分析
+        }));
+        allTracksSelected.value = true;
+      }
+
+    } catch (e) {
+      error(`解析MIDI失败: ${e}`);
+      tracks.value = [];
+      midiEvents.value = [];
+      originalMidiEvents.value = [];
+    }
+  } else {
+    tracks.value = [];
+    midiEvents.value = [];
+    originalMidiEvents.value = [];
+  }
+});
+
+// 监听音轨的transpose和octave变化（用于手动输入时触发重新分析）
+watch(() => tracks.value.map(t => ({ id: t.id, transpose: t.transpose, octave: t.octave })), (newValues, oldValues) => {
+  if (oldValues && oldValues.length > 0) {
+    newValues.forEach((newVal, index) => {
+      const oldVal = oldValues[index];
+      if (oldVal && (newVal.transpose !== oldVal.transpose || newVal.octave !== oldVal.octave)) {
+        const track = tracks.value.find(t => t.id === newVal.id);
+        if (track) {
+          // 延迟执行以避免在adjustTranspose/adjustOctave中重复调用
+          setTimeout(() => reanalyzeTrack(track), 0);
+        }
+      }
+    });
+  }
+}, { deep: true });
+
+
+
+// ... (imports)
+
+// ... (props)
+
+// ... (refs)
+
+// ... (watch)
+
+// 移除本地 getNoteName 实现，直接使用导入的函数
+
+// 根据选中的音轨过滤事件
+const filteredMidiEvents = computed(() => {
+  const selectedTrackIds = new Set(tracks.value.filter(t => t.selected).map(t => t.id));
+  return midiEvents.value.filter(event => selectedTrackIds.has(event.track));
+});
 
 // 切换全选
 const toggleSelectAll = () => {
-  allTracksSelected.value = !allTracksSelected.value;
   tracks.value.forEach(track => {
     track.selected = allTracksSelected.value;
   });
+  info(`全选状态更新: ${allTracksSelected.value ? '全选' : '取消全选'}，当前选中${tracks.value.filter(t => t.selected).length}个音轨`);
 };
 
 // 切换音轨选择
 const toggleTrackSelection = (trackId: number) => {
   const track = tracks.value.find(t => t.id === trackId);
   if (track) {
-    track.selected = !track.selected;
-    // 更新全选状态
+    // 不需要手动切换状态，因为v-model已经处理了
+    // 只需要更新全选状态
     allTracksSelected.value = tracks.value.every(t => t.selected);
+    info(`音轨${trackId}选择状态: ${track.selected ? '选中' : '取消选中'}`);
   }
 };
 
 // 调整移调
-const adjustTranspose = (trackId: number, direction: number) => {
+const adjustTranspose = (trackId: number, delta: number) => {
   const track = tracks.value.find(t => t.id === trackId);
   if (track) {
-    track.transpose += direction;
+    track.transpose += delta;
+    // 转音设置变更后重新分析
+    reanalyzeTrack(track);
   }
 };
 
-// 调整八度
-const adjustOctave = (trackId: number, direction: number) => {
+// 调整转位
+const adjustOctave = (trackId: number, delta: number) => {
   const track = tracks.value.find(t => t.id === trackId);
   if (track) {
-    track.octave += direction;
+    track.octave += delta;
+    // 转音设置变更后重新分析
+    reanalyzeTrack(track);
   }
 };
 
-// 重置转音设置
+// 重置转音
 const resetTranspose = (trackId: number) => {
   const track = tracks.value.find(t => t.id === trackId);
   if (track) {
     track.transpose = 0;
     track.octave = 0;
+    // 转音设置变更后重新分析
+    reanalyzeTrack(track);
   }
+};
+
+// 重新分析音轨（转音设置变更后）
+const reanalyzeTrack = (track: Track) => {
+  info(`开始重新分析音轨${track.id}, 移调${track.transpose}, 转位${track.octave}`);
+
+  // 调试：检查前几个事件的结构
+  if (originalMidiEvents.value.length > 0) {
+    const sampleEvents = originalMidiEvents.value.slice(0, 5);
+    info(`样本事件: ${JSON.stringify(sampleEvents.map(e => ({ track: e.track, type: e.type, note: e.note })))}`);
+  }
+
+  // 获取该音轨的所有原始音符事件（只要note_on事件）
+  const trackEvents = originalMidiEvents.value.filter(e => e.track === track.id && e.type === 'note_on');
+  info(`音轨${track.id}的原始note_on事件数量: ${trackEvents.length}, 总原始事件: ${originalMidiEvents.value.length}`);
+
+  if (trackEvents.length === 0) {
+    info(`音轨${track.id}没有note_on事件，跳过分析`);
+    return;
+  }
+
+  // 应用转音调整
+  const adjustment = track.transpose + (track.octave * 12);
+  const adjustedNotes = trackEvents.map(e => e.note + adjustment);
+
+  // 从设置中获取限制值
+  const settingsStore = useSettingsStore();
+  const limit_min = settingsStore.state.keySettings.minNote;
+  const limit_max = settingsStore.state.keySettings.maxNote;
+
+  // 重新计算分析
+  const max_note = Math.max(...adjustedNotes);
+  const min_note = Math.min(...adjustedNotes);
+  const upper_over_limit = adjustedNotes.filter(n => n > limit_max).length;
+  const lower_over_limit = adjustedNotes.filter(n => n < limit_min).length;
+  const is_max_over_limit = max_note > limit_max || max_note < limit_min;
+  const is_min_over_limit = min_note < limit_min || min_note > limit_max;
+
+  // 重新计算建议
+  let suggested_max_transpose = null;
+  let suggested_max_octave = null;
+  let suggested_min_transpose = null;
+  let suggested_min_octave = null;
+
+  if (is_max_over_limit) {
+    const diff = limit_max - max_note;
+    const suggestion = optimizeTransposeSuggestion(diff, track.transpose, track.octave);
+    if (suggestion) {
+      suggested_max_transpose = suggestion[0];
+      suggested_max_octave = suggestion[1];
+    }
+  }
+
+  if (is_min_over_limit) {
+    const diff = limit_min - min_note;
+    const suggestion = optimizeTransposeSuggestion(diff, track.transpose, track.octave);
+    if (suggestion) {
+      suggested_min_transpose = suggestion[0];
+      suggested_min_octave = suggestion[1];
+    }
+  }
+
+  // 更新音轨分析
+  track.analysis = {
+    ...track.analysis,
+    max_note,
+    min_note,
+    max_note_name: getNoteName(max_note),
+    min_note_name: getNoteName(min_note),
+    max_note_group: groupForNote(max_note),
+    min_note_group: groupForNote(min_note),
+    upper_over_limit,
+    lower_over_limit,
+    is_max_over_limit,
+    is_min_over_limit,
+    suggested_max_transpose,
+    suggested_max_octave,
+    suggested_min_transpose,
+    suggested_min_octave,
+  };
+
+  info(`音轨${track.id}重新分析完成: ${min_note}-${max_note}, 移调${track.transpose}, 转位${track.octave}`);
+};
+
+// 优化移调建议（前端版本）
+const optimizeTransposeSuggestion = (diff: number, current_transpose: number, current_octave: number): [number, number] | null => {
+  const suggestions: Array<[number, number, number]> = [];
+
+  for (let octave_shift = -2; octave_shift <= 2; octave_shift++) {
+    const total_transpose_needed = diff - (octave_shift * 12);
+    const final_transpose = current_transpose + total_transpose_needed;
+    const final_octave = current_octave + octave_shift;
+
+    let score = Math.abs(final_transpose) + Math.abs(final_octave);
+    // 鼓励小的移调和转位变化，特别是避免大的移调
+    if (Math.abs(final_transpose) >= 5 && Math.abs(final_transpose) <= 7) {
+      score += 0.5; // 惩罚大的移调
+    }
+
+    suggestions.push([final_transpose, final_octave, score]);
+  }
+
+  suggestions.sort((a, b) => a[2] - b[2]);
+  return suggestions.length > 0 ? [suggestions[0][0], suggestions[0][1]] : null;
 };
 
 // 播放控制
@@ -118,8 +359,72 @@ const showHelp = () => {
 // 处理设置保存
 const handleSettingsSaved = (settings: any) => {
   info(`设置已保存: ${JSON.stringify(settings)}`);
-  // 这里可以根据需要更新组件中的相关设置
+  // 设置已通过 store 更新，这里不需要额外操作
 };
+
+// 格式化音轨分析文本（返回对象，包含可点击部分）
+const getTrackAnalysisLines = (track: Track) => {
+  const analysis = track.analysis;
+  if (!analysis || !analysis.max_note || !analysis.min_note) {
+    return {
+      line1: `音符数量: ${track.noteCount}`,
+      line2: '',
+      suggestions: []
+    };
+  }
+
+  // 第一行：最高音分析
+  const maxStatus = analysis.upper_over_limit > 0 ? "超限" : "未超限";
+  const line1 = `最高音: ${analysis.max_note_name}(${analysis.max_note})  ${analysis.max_note_group}  ${maxStatus}  超限数量: ${analysis.upper_over_limit}`;
+
+  // 第二行：最低音分析
+  const minStatus = analysis.lower_over_limit > 0 ? "超限" : "未超限";
+  const line2 = `最低音: ${analysis.min_note_name}(${analysis.min_note})  ${analysis.min_note_group}  ${minStatus}  超限数量: ${analysis.lower_over_limit}`;
+
+  // 第三行：建议（仅在超限时显示）
+  const suggestions: Array<{ type: 'max' | 'min', text: string, transpose: number, octave: number }> = [];
+
+  if (analysis.is_max_over_limit && analysis.suggested_max_transpose !== null && analysis.suggested_max_octave !== null) {
+    suggestions.push({
+      type: 'max',
+      text: '最高音',
+      transpose: analysis.suggested_max_transpose,
+      octave: analysis.suggested_max_octave
+    });
+  }
+
+  if (analysis.is_min_over_limit && analysis.suggested_min_transpose !== null && analysis.suggested_min_octave !== null) {
+    suggestions.push({
+      type: 'min',
+      text: '最低音',
+      transpose: analysis.suggested_min_transpose,
+      octave: analysis.suggested_min_octave
+    });
+  }
+
+  return { line1, line2, suggestions };
+};
+
+// 应用建议
+const applySuggestion = (track: Track, type: 'max' | 'min') => {
+  const analysis = track.analysis;
+  if (!analysis) return;
+
+  info(`开始应用建议: 音轨${track.id}, 类型${type}`);
+
+  if (type === 'max' && analysis.suggested_max_transpose !== null && analysis.suggested_max_octave !== null) {
+    track.transpose = analysis.suggested_max_transpose;
+    track.octave = analysis.suggested_max_octave;
+    info(`应用最高音建议: 移调${track.transpose}, 转位${track.octave}`);
+    reanalyzeTrack(track);
+  } else if (type === 'min' && analysis.suggested_min_transpose !== null && analysis.suggested_min_octave !== null) {
+    track.transpose = analysis.suggested_min_transpose;
+    track.octave = analysis.suggested_min_octave;
+    info(`应用最低音建议: 移调${track.transpose}, 转位${track.octave}`);
+    reanalyzeTrack(track);
+  }
+};
+
 </script>
 
 <template>
@@ -128,14 +433,14 @@ const handleSettingsSaved = (settings: any) => {
     <div class="tracks-frame">
       <h3 class="frame-title">
         音轨详情【 当前播放范围：{{ getNoteName(currentMinNote) }}({{ currentMinNote }}) - {{ getNoteName(currentMaxNote) }}({{
-        currentMaxNote }}) 】
+          currentMaxNote }}) 】
       </h3>
 
       <!-- 当前歌曲名称 -->
       <div class="current-song-section">
         <div class="song-info">
           <span class="label">当前歌曲：</span>
-          <span class="value">{{ props.selectedMidiFile || "未选择" }}</span>
+          <span class="value">{{ displayFileName || "未选择" }}</span>
         </div>
       </div>
 
@@ -150,7 +455,10 @@ const handleSettingsSaved = (settings: any) => {
       <!-- 音轨列表 -->
       <div class="tracks-list-section">
         <div class="tracks-list">
-          <div v-for="track in tracks" :key="track.id" class="track-item">
+          <div v-if="tracks.length === 0" class="empty-tracks-hint">
+            {{ props.selectedMidiFile ? "正在解析或无有效音轨..." : "请在左侧选择 MIDI 文件" }}
+          </div>
+          <div v-else v-for="track in tracks" :key="track.id" class="track-item">
             <!-- 音轨选择 -->
             <div class="track-selection">
               <input type="checkbox" :id="`track-${track.id}`" v-model="track.selected"
@@ -163,12 +471,22 @@ const handleSettingsSaved = (settings: any) => {
                 <h4 class="track-title">音轨{{ track.id + 1 }}：{{ track.name }} ({{ track.noteCount }}个音符)</h4>
               </div>
               <div class="track-analysis">
-                <p>{{ track.analysis }}</p>
+                <div class="analysis-line">{{ getTrackAnalysisLines(track).line1 }}</div>
+                <div class="analysis-line">{{ getTrackAnalysisLines(track).line2 }}</div>
+                <div v-if="getTrackAnalysisLines(track).suggestions.length > 0" class="analysis-line">
+                  建议:
+                  <template v-for="(sug, idx) in getTrackAnalysisLines(track).suggestions" :key="idx">
+                    <span v-if="idx > 0"> </span>
+                    <span class="suggestion-link" @click="applySuggestion(track, sug.type)">{{ sug.text }}</span>
+                    <span> 移调{{ sug.transpose }}，转位{{ sug.octave }}</span>
+                  </template>
+                </div>
               </div>
             </div>
 
             <!-- 转音设置 -->
             <div class="transpose-settings">
+              <h5 class="transpose-title">转音设置</h5>
               <div class="setting-group">
                 <label>移调:</label>
                 <div class="control-buttons">
@@ -178,7 +496,7 @@ const handleSettingsSaved = (settings: any) => {
                 </div>
               </div>
               <div class="setting-group">
-                <label>八度:</label>
+                <label>转位:</label>
                 <div class="control-buttons">
                   <button class="btn btn-small" @click="adjustOctave(track.id, -1)">-</button>
                   <input type="number" v-model.number="track.octave" class="number-input" />
@@ -225,8 +543,9 @@ const handleSettingsSaved = (settings: any) => {
     </div>
   </section>
 
-  <!-- 对话框组件 -->
-  <EventTableDialog v-model:visible="showEventTableDialog" />
+  <!-- 事件表对话框 -->
+  <EventTableDialog :visible="showEventTableDialog" @update:visible="showEventTableDialog = $event"
+    :events="filteredMidiEvents" />
   <SettingsDialog v-model:visible="showSettingsDialog" @settingsSaved="handleSettingsSaved" />
   <HelpDialog v-model:visible="showHelpDialog" />
 </template>
@@ -303,12 +622,26 @@ const handleSettingsSaved = (settings: any) => {
 
 /* 音轨列表 */
 .tracks-list-section {
-  max-height: 300px;
+  height: 300px;
   overflow-y: auto;
   background-color: var(--bg);
   border: 1px solid var(--border);
   border-radius: 4px;
   padding: 0.5rem;
+}
+
+.tracks-list {
+  height: 100%;
+}
+
+.empty-tracks-hint {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  height: 100%;
+  min-height: 100px;
+  color: var(--secondary);
+  font-size: 0.9rem;
 }
 
 .track-item {
@@ -336,7 +669,7 @@ const handleSettingsSaved = (settings: any) => {
 }
 
 .track-header {
-  margin-bottom: 0.5rem;
+  margin-bottom: 0.25rem;
 }
 
 .track-title {
@@ -350,15 +683,25 @@ const handleSettingsSaved = (settings: any) => {
   font-size: 0.8rem;
   color: var(--fg);
   background-color: var(--bg);
-  padding: 0.5rem;
+  padding: 0.25rem;
   border-radius: 4px;
-  border: 1px solid var(--border);
-  max-height: 60px;
-  overflow-y: auto;
+  max-height: 90px;
 }
 
-.track-analysis p {
-  margin: 0;
+.analysis-line {
+  margin: 0.125rem 0;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}
+
+.suggestion-link {
+  color: var(--primary);
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.suggestion-link:hover {
+  color: var(--dark);
 }
 
 /* 转音设置 */
@@ -369,16 +712,24 @@ const handleSettingsSaved = (settings: any) => {
   min-width: 150px;
 }
 
+.transpose-title {
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--fg);
+  margin: 0 0 0.25rem 0;
+}
+
 .setting-group {
   display: flex;
-  flex-direction: column;
-  gap: 0.25rem;
+  align-items: center;
+  gap: 0.5rem;
 }
 
 .setting-group label {
   font-size: 0.8rem;
   color: var(--secondary);
   font-weight: 500;
+  min-width: 35px;
 }
 
 .control-buttons {
