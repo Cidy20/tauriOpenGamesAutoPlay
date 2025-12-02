@@ -69,6 +69,11 @@ const originalMidiEvents = ref<any[]>([]); // 保存原始事件数据
 
 // 监听文件选择变化
 watch(() => props.selectedMidiFile, async (newFile) => {
+  // 切换歌曲时停止MIDI播放
+  if (isPlayingMidi.value) {
+    stopMidiPlayback();
+  }
+
   if (newFile) {
     // 提取文件名用于显示
     displayFileName.value = newFile.split(/[/\\]/).pop() || newFile;
@@ -332,8 +337,164 @@ const togglePreview = () => {
   // 实现预览逻辑
 };
 
-const toggleMidiPlayback = () => {
-  // 实现试听MIDI逻辑
+// MIDI播放相关状态
+const isPlayingMidi = ref(false);
+const midiRemainingTime = ref(0);
+let toneSynth: any = null; // 使用非响应式变量避免 Vue Proxy 干扰 Tone.js
+
+let playbackTimer: number | null = null;
+
+const toggleMidiPlayback = async () => {
+  if (isPlayingMidi.value) {
+    // 停止播放
+    stopMidiPlayback();
+  } else {
+    // 开始播放
+    await startMidiPlayback();
+  }
+};
+
+const startMidiPlayback = async () => {
+  if (!props.selectedMidiFile) {
+    error('没有选择MIDI文件');
+    return;
+  }
+
+  try {
+    info('开始加载MIDI播放器...');
+
+    // 动态导入Tone.js
+    const Tone = await import('tone');
+
+    // 停止之前的播放
+    if (toneSynth) {
+      toneSynth.dispose();
+    }
+
+    // 创建合成器（使用PolySynth支持多音符同时播放）
+    toneSynth = new Tone.PolySynth(Tone.Synth, {
+      volume: -5, // 音量95%左右
+      oscillator: {
+        type: 'triangle'
+      },
+      envelope: {
+        attack: 0.005,
+        decay: 0.1,
+        sustain: 0.3,
+        release: 1
+      }
+    }).toDestination();
+
+    info('开始播放MIDI...');
+    isPlayingMidi.value = true;
+
+    // 启动Tone.js音频上下文
+    if (Tone.context.state !== 'running') {
+      await Tone.start();
+    }
+    info(`Tone context state: ${Tone.context.state}`);
+
+    // 计算总时长
+    if (midiEvents.value.length === 0) {
+      error('没有MIDI事件可播放');
+      stopMidiPlayback();
+      return;
+    }
+
+    const maxEndTime = Math.max(...midiEvents.value.map(e => e.end || e.time));
+    midiRemainingTime.value = Math.ceil(maxEndTime);
+
+    // 调度所有音符
+    const now = Tone.now();
+    const startTimeOffset = 0.5; // 延迟0.5秒开始播放，给调度留出时间
+    info(`Current Tone time: ${now}, Scheduling start at: ${now + startTimeOffset}`);
+    let scheduledCount = 0;
+
+    midiEvents.value.forEach((event, index) => {
+      if (index < 3) {
+        info(`Event ${index}: type=${event.type}, note=${event.note}, time=${event.time}, duration=${event.duration}`);
+      }
+      if (event.type === 'note_on' && event.note && event.velocity > 0) {
+        try {
+          // 将MIDI音符号转换为音符名称
+          const noteName = Tone.Frequency(event.note, 'midi').toNote();
+          const startTime = now + startTimeOffset + event.time;
+          const duration = event.duration || 0.5;
+          const velocity = Math.min(Math.max(event.velocity / 127, 0.1), 1); // 确保音量在0.1-1之间
+
+          // 调度音符播放
+          toneSynth.triggerAttackRelease(
+            noteName,
+            duration,
+            startTime,
+            velocity
+          );
+          scheduledCount++;
+        } catch (e) {
+          // 忽略单个音符的错误
+          error(`Error scheduling note: ${e}`);
+        }
+      }
+    });
+
+    info(`成功调度${scheduledCount}个音符`);
+
+    // 启动倒计时
+    playbackTimer = window.setInterval(() => {
+      midiRemainingTime.value--;
+      if (midiRemainingTime.value <= 0) {
+        stopMidiPlayback();
+      }
+    }, 1000);
+
+  } catch (e) {
+    error(`MIDI播放失败: ${e}`);
+    stopMidiPlayback();
+  }
+};
+
+const stopMidiPlayback = async () => {
+  info('停止MIDI播放');
+
+  // 停止合成器
+  if (toneSynth) {
+    try {
+      toneSynth.dispose();
+      toneSynth = null;
+      info('合成器已销毁');
+    } catch (e) {
+      info(`停止合成器时出错: ${e}`);
+    }
+  }
+
+  // 清除定时器
+  if (playbackTimer) {
+    clearInterval(playbackTimer);
+    playbackTimer = null;
+  }
+  isPlayingMidi.value = false;
+  midiRemainingTime.value = 0;
+};
+
+// const testSound = async () => {
+//   try {
+//     info('Testing sound...');
+//     const Tone = await import('tone');
+//     await Tone.start();
+//     info(`Tone context state: ${Tone.context.state}`);
+//     const synth = new Tone.Synth().toDestination();
+//     synth.triggerAttackRelease("C4", "8n");
+//     info("Test sound played");
+//   } catch (e) {
+//     error(`Test sound failed: ${e}`);
+//   }
+// };
+
+// 格式化时间显示（MM:SS）
+const formatTime = (seconds: number): string => {
+  const mins = Math.floor(seconds / 60);
+  const secs = seconds % 60;
+  return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
 // 对话框显示状态
@@ -513,12 +674,12 @@ const applySuggestion = (track: Track, type: 'max' | 'min') => {
     </div>
 
     <!-- 操作区域 -->
-    <div class="operation-frame">
+    <div class="controls-frame">
       <h3 class="frame-title">操作</h3>
 
       <!-- 剩余时间 -->
       <div class="time-section">
-        <div class="time-label">剩余时间: {{ remainingTime }}</div>
+        <div class="time-label">剩余时间: {{ isPlayingMidi ? formatTime(midiRemainingTime) : remainingTime }}</div>
       </div>
 
       <!-- 控制按钮 -->
@@ -526,7 +687,8 @@ const applySuggestion = (track: Track, type: 'max' | 'min') => {
         <button class="btn btn-success" @click="togglePlay">播放</button>
         <button class="btn btn-danger" @click="stopPlayback">停止</button>
         <button class="btn btn-info" @click="togglePreview">预览</button>
-        <button class="btn btn-info" @click="toggleMidiPlayback">试听MIDI</button>
+        <button class="btn btn-info" @click="toggleMidiPlayback">{{ isPlayingMidi ? '停止试听' : '试听MIDI' }}</button>
+        <!-- <button class="btn btn-secondary" @click="testSound">测试声音</button> -->
       </div>
     </div>
 
