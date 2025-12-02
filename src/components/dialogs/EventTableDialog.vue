@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import Dialog from "../common/Dialog.vue";
 import { info } from '@tauri-apps/plugin-log';
+import { getNoteName, groupForNote } from "../../config/groups";
+import { useSettingsStore } from "../../store/settings";
 
 interface EventData {
   time: number;
@@ -15,6 +17,7 @@ interface EventData {
 
 interface EventTableDialogProps {
   visible: boolean;
+  events: EventData[];
 }
 
 const props = defineProps<EventTableDialogProps>();
@@ -22,21 +25,38 @@ const emit = defineEmits<{
   (e: "update:visible", value: boolean): void;
 }>();
 
+// 使用 SettingsStore
+const settingsStore = useSettingsStore();
+
 // 状态
 const showOnlyOutOfRange = ref(false);
-const events = ref<EventData[]>([]);
+const events = computed(() => props.events || []);
 const currentMinNote = ref(48);
 const currentMaxNote = ref(83);
 
-// 计算超限音符数量
+// 初始化 store 并获取设置
+onMounted(async () => {
+  await settingsStore.init();
+  currentMinNote.value = settingsStore.state.keySettings.minNote;
+  currentMaxNote.value = settingsStore.state.keySettings.maxNote;
+});
+
+// 监听 store 变化
+watch(() => settingsStore.state.keySettings, (newSettings) => {
+  currentMinNote.value = newSettings.minNote;
+  currentMaxNote.value = newSettings.maxNote;
+}, { deep: true });
+
+// 计算超限音符数量（只统计note_on事件）
 const outOfRangeCount = computed(() => {
-  return events.value.filter(e => e.type === 'note_on' && isOutOfRange(e)).length;
+  return events.value.filter(e => e.type === 'note_on' && e.note && isOutOfRange(e)).length;
 });
 
 // 过滤后的事件
 const filteredEvents = computed(() => {
   if (showOnlyOutOfRange.value) {
-    return events.value.filter(e => isOutOfRange(e));
+    // 只显示超限音符相关的事件（包括note_on和note_off）
+    return events.value.filter(e => e.note && isOutOfRange(e));
   }
   return events.value;
 });
@@ -47,27 +67,24 @@ const isOutOfRange = (event: EventData): boolean => {
   return event.note < currentMinNote.value || event.note > currentMaxNote.value;
 };
 
-// 获取音符名称
-const getNoteName = (note: number): string => {
-  const noteNames = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-  const octave = Math.floor(note / 12) - 1;
-  const noteIndex = note % 12;
-  return `${noteNames[noteIndex]}${octave}`;
-};
 
-// 获取音符分组（简化版本）
-const getNoteGroup = (note: number): string => {
-  // 这里可以根据实际的分组配置返回对应的分组名称
-  // 暂时返回简单的分组逻辑
-  if (note >= 48 && note <= 59) return "第一组";
-  if (note >= 60 && note <= 71) return "第二组";
-  if (note >= 72 && note <= 83) return "第三组";
-  return "超出范围";
-};
+
+// ... (imports)
+
+// ... (props)
+
+// ... (refs)
+
+// ... (computed)
+
+// ... (isOutOfRange)
+
+// 移除本地 getNoteName 和 getNoteGroup 实现
 
 // 切换显示模式
 const toggleDisplay = () => {
-  showOnlyOutOfRange.value = !showOnlyOutOfRange.value;
+  console.log('toggleDisplay called, showOnlyOutOfRange:', showOnlyOutOfRange.value);
+  // v-model已经处理了值的更新，这里不需要再次切换
 };
 
 // 导出事件CSV
@@ -88,72 +105,30 @@ const handleEventDoubleClick = (event: EventData) => {
   info(`双击事件: ${JSON.stringify(event)}`);
 };
 
-// 生成示例数据
-const generateSampleEvents = () => {
-  const sampleEvents: EventData[] = [];
-  const notes = [60, 64, 67, 62, 65, 69, 45, 85]; // 包含一些超出范围的音符
-  
-  for (let i = 0; i < notes.length; i++) {
-    const note = notes[i];
-    // 添加note_on事件
-    sampleEvents.push({
-      time: i * 0.5,
-      type: 'note_on',
-      note,
-      channel: 0,
-      group: getNoteGroup(note),
-      duration: 0.5,
-      end: i * 0.5 + 0.5
-    });
-    // 添加note_off事件
-    sampleEvents.push({
-      time: i * 0.5 + 0.5,
-      type: 'note_off',
-      note,
-      channel: 0,
-      group: getNoteGroup(note)
-    });
-  }
-  
-  return sampleEvents;
-};
-
 // 监听可见性变化，初始化数据
 watch(() => props.visible, (newVal) => {
   if (newVal) {
-    // 加载事件数据，这里使用示例数据
-    events.value = generateSampleEvents();
+    info(`打开事件表，事件数量: ${props.events?.length || 0}`);
   }
 });
 </script>
 
 <template>
-  <Dialog
-    :visible="visible"
-    @update:visible="emit('update:visible', $event)"
-    title="事件表"
-    width="800px"
-    height="600px"
-  >
+  <Dialog :visible="visible" @update:visible="emit('update:visible', $event)" title="事件表" width="800px" height="600px">
     <!-- 工具栏 -->
     <div class="event-toolbar">
       <button class="btn btn-small" @click="exportEventCsv">导出事件CSV</button>
       <button class="btn btn-small" @click="exportKeyNotation">导出按键谱</button>
-      
+
       <div class="toolbar-right">
         <span class="out-of-range-count">超限音符数量：{{ outOfRangeCount }}</span>
         <div class="checkbox-item">
-          <input 
-            type="checkbox" 
-            id="showOutOfRange" 
-            v-model="showOnlyOutOfRange"
-            @change="toggleDisplay"
-          />
+          <input type="checkbox" id="showOutOfRange" v-model="showOnlyOutOfRange" @change="toggleDisplay" />
           <label for="showOutOfRange">仅显示超限音符</label>
         </div>
       </div>
     </div>
-    
+
     <!-- 事件表格 -->
     <div class="event-table-container">
       <table class="event-table">
@@ -170,18 +145,14 @@ watch(() => props.visible, (newVal) => {
           </tr>
         </thead>
         <tbody>
-          <tr 
-            v-for="(event, index) in filteredEvents" 
-            :key="index"
-            :class="{ 'out-of-range': event.note && isOutOfRange(event) }"
-            @dblclick="handleEventDoubleClick(event)"
-          >
+          <tr v-for="(event, index) in filteredEvents" :key="index"
+            :class="{ 'out-of-range': event.note && isOutOfRange(event) }" @dblclick="handleEventDoubleClick(event)">
             <td>{{ index + 1 }}</td>
             <td>{{ event.time.toFixed(2) }}</td>
             <td>{{ event.type }}</td>
             <td>{{ event.note ? getNoteName(event.note) + '(' + event.note + ')' : '-' }}</td>
             <td>{{ event.channel }}</td>
-            <td>{{ event.note ? getNoteGroup(event.note) : '-' }}</td>
+            <td>{{ event.note ? groupForNote(event.note) : '-' }}</td>
             <td>{{ event.end ? event.end.toFixed(2) : '-' }}</td>
             <td>{{ event.duration ? event.duration.toFixed(2) : '-' }}</td>
           </tr>
