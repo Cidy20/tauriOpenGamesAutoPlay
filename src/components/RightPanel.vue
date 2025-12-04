@@ -72,9 +72,12 @@ const originalMidiEvents = ref<any[]>([]); // 保存原始事件数据
 
 // 监听文件选择变化
 watch(() => props.selectedMidiFile, async (newFile) => {
-  // 切换歌曲时停止MIDI播放
-  if (isPlayingMidi.value) {
-    stopMidiPlayback();
+  // 切换歌曲时停止所有播放、预览和倒计时
+  if (isPlaying.value || countdownSeconds.value > 0) {
+    await stopPlayback();
+  }
+  if (isPlayingMidi.value || isPreviewing.value) {
+    await stopMidiPlayback();
   }
 
   if (newFile) {
