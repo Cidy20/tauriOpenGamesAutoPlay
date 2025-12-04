@@ -7,6 +7,7 @@ import SettingsDialog from "./dialogs/SettingsDialog.vue";
 import HelpDialog from "./dialogs/HelpDialog.vue";
 import { info, error } from '@tauri-apps/plugin-log';
 import { getNoteName, groupForNote } from "../config/groups";
+import { NOTE_TO_KEY } from "../config/keyboard_mapping";
 
 const props = defineProps({
   selectedMidiFile: { type: [String, null], default: null },
@@ -136,10 +137,19 @@ watch(() => props.selectedMidiFile, async (newFile) => {
       midiEvents.value = [];
       originalMidiEvents.value = [];
     }
+
+    // 启用播放相关按钮
+    enablePlaybackButtons();
   } else {
     tracks.value = [];
     midiEvents.value = [];
     originalMidiEvents.value = [];
+
+    // 禁用所有按钮
+    isPlayButtonEnabled.value = false;
+    isStopButtonEnabled.value = false;
+    isPreviewButtonEnabled.value = false;
+    isMidiPlaybackButtonEnabled.value = false;
   }
 });
 
@@ -332,12 +342,223 @@ const optimizeTransposeSuggestion = (diff: number, current_transpose: number, cu
 };
 
 // 播放控制
-const togglePlay = () => {
-  // 实现播放/暂停逻辑
+// 播放控制状态
+const isPlaying = ref(false);
+const playbackRemainingTime = ref(0);
+let playbackTimer: number | null = null;
+const countdownSeconds = ref(0); // 倒计时秒数
+let countdownInterval: number | null = null; // 倒计时定时器
+let cancelCountdownFunc: (() => void) | null = null; // 取消倒计时的函数
+
+// 按钮启用状态
+const isPlayButtonEnabled = ref(false);
+const isStopButtonEnabled = ref(false);
+const isPreviewButtonEnabled = ref(false);
+const isMidiPlaybackButtonEnabled = ref(false);
+
+// 按钮状态管理函数
+const enablePlaybackButtons = () => {
+  isPlayButtonEnabled.value = true;
+  isStopButtonEnabled.value = false;
+  isPreviewButtonEnabled.value = true;
+  isMidiPlaybackButtonEnabled.value = true;
 };
 
-const stopPlayback = () => {
-  // 实现停止逻辑
+const setPlayingState = () => {
+  isPlayButtonEnabled.value = true; // 播放按钮变为暂停
+  isStopButtonEnabled.value = true;
+  isPreviewButtonEnabled.value = false;
+  isMidiPlaybackButtonEnabled.value = false;
+};
+
+const setCountdownState = () => {
+  isPlayButtonEnabled.value = false; // 倒计时期间禁用播放按钮
+  isStopButtonEnabled.value = true; // 允许取消倒计时
+  isPreviewButtonEnabled.value = false;
+  isMidiPlaybackButtonEnabled.value = false;
+};
+
+const setPreviewState = (isPreviewing: boolean) => {
+  isPlayButtonEnabled.value = !isPreviewing;
+  isStopButtonEnabled.value = false;
+  isPreviewButtonEnabled.value = true; // 预览按钮本身始终启用（用于停止）
+  isMidiPlaybackButtonEnabled.value = !isPreviewing;
+};
+
+const setMidiPlaybackState = (isPlaying: boolean) => {
+  isPlayButtonEnabled.value = !isPlaying;
+  isStopButtonEnabled.value = false;
+  isPreviewButtonEnabled.value = !isPlaying;
+  isMidiPlaybackButtonEnabled.value = true; // 试听按钮本身始终启用（用于停止）
+};
+
+// 播放控制
+const togglePlay = async () => {
+  if (isPlaying.value) {
+    // 暂停播放（实际上是停止）
+    await stopPlayback();
+  } else {
+    // 开始播放
+    await startPlayback();
+  }
+};
+
+const startPlayback = async () => {
+  if (!props.selectedMidiFile) {
+    error('[RightPanel.vue] 没有选择MIDI文件');
+    return;
+  }
+
+  try {
+    info('[RightPanel.vue] 开始准备播放...');
+
+    // 1. 使用 filteredMidiEvents（已经过音轨选择、转音、黑键处理）
+    // 2. 过滤超限事件和非 note_on 事件
+    const validEvents = filteredMidiEvents.value.filter(event => {
+      if (event.type !== 'note_on') return false;
+      const note = event.note;
+      // 只保留在范围内的音符
+      return note >= currentMinNote.value && note <= currentMaxNote.value;
+    });
+
+    if (validEvents.length === 0) {
+      error('[RightPanel.vue] 没有有效的音符可播放（所有音符都超限或未选中音轨）');
+      return;
+    }
+
+    info(`[RightPanel.vue] 过滤后有${validEvents.length}个有效音符，原始${filteredMidiEvents.value.filter(e => e.type === 'note_on').length}个音符`);
+
+    // 3. 将 MIDI 音符事件映射到按键事件
+    const keyEvents = validEvents.map(event => {
+      const key = NOTE_TO_KEY[event.note];
+      if (!key) {
+        info(`[RightPanel.vue] 警告：音符${event.note}没有对应的按键映射`);
+        return null;
+      }
+      return {
+        time: event.time,
+        key: key,
+        duration: event.duration || 0.1
+      };
+    }).filter(e => e !== null); // 过滤掉没有映射的音符
+
+    if (keyEvents.length === 0) {
+      error('[RightPanel.vue] 没有可映射的按键事件');
+      return;
+    }
+
+    info(`[RightPanel.vue] 准备播放${keyEvents.length}个按键事件`);
+
+    // 4. 计算总时长
+    const maxEndTime = Math.max(...validEvents.map(e => e.end || e.time));
+    playbackRemainingTime.value = Math.ceil(maxEndTime);
+
+    // 5. 开始 3 秒倒计时
+    // 立即设置倒计时状态，确保停止按钮可用
+    setCountdownState();
+    countdownSeconds.value = 3;
+    info('[RightPanel.vue] 开始倒计时...');
+
+    await new Promise<void>((resolve, reject) => {
+      // 定义取消函数
+      cancelCountdownFunc = () => {
+        if (countdownInterval) {
+          clearInterval(countdownInterval);
+          countdownInterval = null;
+        }
+        countdownSeconds.value = 0;
+        reject(new Error('Countdown cancelled'));
+      };
+
+      countdownInterval = window.setInterval(() => {
+        countdownSeconds.value--;
+        if (countdownSeconds.value <= 0) {
+          if (countdownInterval) {
+            clearInterval(countdownInterval);
+            countdownInterval = null;
+          }
+          countdownSeconds.value = 0;
+          cancelCountdownFunc = null; // 正常结束，清除取消函数
+          resolve();
+        }
+      }, 1000);
+    });
+
+    // 再次确认没有被取消（双重保险）
+    if (cancelCountdownFunc === null && countdownSeconds.value > 0) {
+      throw new Error('Countdown cancelled');
+    }
+    cancelCountdownFunc = null; // 清除引用
+
+    // 6. 调用后端 start_playback 命令
+    // 在调用后端前，强制设置正确的按钮状态，防止之前的状态混乱
+    setPlayingState();
+
+    await invoke('start_playback', { events: keyEvents });
+    isPlaying.value = true;
+    info('[RightPanel.vue] 播放已启动');
+
+    // 7. 启动播放倒计时
+    playbackTimer = window.setInterval(() => {
+      playbackRemainingTime.value--;
+      if (playbackRemainingTime.value <= 0) {
+        stopPlayback();
+      }
+    }, 1000);
+
+  } catch (e: any) {
+    if (e.message === 'Countdown cancelled') {
+      info('[RightPanel.vue] 倒计时被取消');
+    } else {
+      error(`[RightPanel.vue] 播放失败: ${e}`);
+    }
+
+    countdownSeconds.value = 0;
+    if (countdownInterval) {
+      clearInterval(countdownInterval);
+      countdownInterval = null;
+    }
+    cancelCountdownFunc = null;
+    await stopPlayback();
+  }
+};
+
+const stopPlayback = async () => {
+  info('[RightPanel.vue] 停止播放');
+
+  // 取消倒计时
+  if (cancelCountdownFunc) {
+    cancelCountdownFunc();
+    cancelCountdownFunc = null;
+  }
+
+  if (countdownInterval) {
+    clearInterval(countdownInterval);
+    countdownInterval = null;
+    countdownSeconds.value = 0;
+    info('[RightPanel.vue] 倒计时已取消');
+  }
+
+  // 调用后端停止播放
+  if (isPlaying.value) {
+    try {
+      await invoke('stop_playback');
+    } catch (e) {
+      error(`[RightPanel.vue] 停止播放时出错: ${e}`);
+    }
+  }
+
+  // 清除定时器
+  if (playbackTimer) {
+    clearInterval(playbackTimer);
+    playbackTimer = null;
+  }
+
+  isPlaying.value = false;
+  playbackRemainingTime.value = 0;
+
+  // 恢复按钮状态
+  enablePlaybackButtons();
 };
 
 // 预览功能
@@ -384,12 +605,14 @@ const startPreview = async () => {
   try {
     await startMidiPlayback();
     isPreviewing.value = true;
+    setPreviewState(true); // 设置预览中状态
     info('[RightPanel.vue] 预览播放已启动');
   } catch (e) {
     error(`[RightPanel.vue] 预览播放失败: ${e}`);
     // 恢复原始事件
     midiEvents.value = originalEvents;
     isPreviewing.value = false;
+    enablePlaybackButtons();
   }
 };
 
@@ -399,7 +622,7 @@ const isPreviewing = ref(false); // 预览模式状态
 const midiRemainingTime = ref(0);
 let toneSynth: any = null; // 使用非响应式变量避免 Vue Proxy 干扰 Tone.js
 
-let playbackTimer: number | null = null;
+let midiPlaybackTimer: number | null = null;
 
 const toggleMidiPlayback = async () => {
   if (isPlayingMidi.value) {
@@ -407,6 +630,7 @@ const toggleMidiPlayback = async () => {
     stopMidiPlayback();
   } else {
     // 开始播放
+    setMidiPlaybackState(true); // 设置试听MIDI中状态
     await startMidiPlayback();
   }
 };
@@ -497,7 +721,7 @@ const startMidiPlayback = async () => {
     info(`[RightPanel.vue:2020] 成功调度${scheduledCount}个音符`);
 
     // 启动倒计时
-    playbackTimer = window.setInterval(() => {
+    midiPlaybackTimer = window.setInterval(() => {
       midiRemainingTime.value--;
       if (midiRemainingTime.value <= 0) {
         stopMidiPlayback();
@@ -525,13 +749,16 @@ const stopMidiPlayback = async () => {
   }
 
   // 清除定时器
-  if (playbackTimer) {
-    clearInterval(playbackTimer);
-    playbackTimer = null;
+  if (midiPlaybackTimer) {
+    clearInterval(midiPlaybackTimer);
+    midiPlaybackTimer = null;
   }
   isPlayingMidi.value = false;
   isPreviewing.value = false; // 重置预览状态
   midiRemainingTime.value = 0;
+
+  // 恢复按钮状态
+  enablePlaybackButtons();
 };
 
 // const testSound = async () => {
@@ -788,10 +1015,15 @@ const applySuggestion = (track: Track, type: 'max' | 'min') => {
 
       <!-- 控制按钮 -->
       <div class="control-buttons-section">
-        <button class="btn btn-success" @click="togglePlay">播放</button>
-        <button class="btn btn-danger" @click="stopPlayback">停止</button>
-        <button class="btn btn-info" @click="togglePreview">预览</button>
-        <button class="btn btn-info" @click="toggleMidiPlayback">{{ isPlayingMidi ? '停止试听' : '试听MIDI' }}</button>
+        <button class="btn btn-success" @click="togglePlay" :disabled="!isPlayButtonEnabled">{{ countdownSeconds > 0 ?
+          `${countdownSeconds}秒后开始` : (isPlaying ? '暂停模拟' : '开始模拟') }}</button>
+        <button class="btn btn-danger" @click="stopPlayback" :disabled="!isStopButtonEnabled">停止模拟</button>
+        <button class="btn btn-info" @click="togglePreview" :disabled="!isPreviewButtonEnabled">{{ isPreviewing ? '停止试听'
+          :
+          '效果试听' }}</button>
+        <button class="btn btn-info" @click="toggleMidiPlayback" :disabled="!isMidiPlaybackButtonEnabled">{{
+          isPlayingMidi ?
+            '停止试听' : '文件试听' }}</button>
         <!-- <button class="btn btn-secondary" @click="testSound">测试声音</button> -->
       </div>
     </div>

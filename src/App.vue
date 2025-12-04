@@ -236,4 +236,12 @@ body {
   background-color: var(--selectbg);
   color: var(--selectfg);
 }
+
+/* 禁用按钮样式 */
+.btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  background-color: var(--secondary) !important;
+  color: var(--light) !important;
+}
 </style>
