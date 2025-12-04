@@ -31,6 +31,7 @@ const localKeySettings = reactive({
   minNote: 48,
   maxNote: 83,
   blackKeyMode: "support_black_key",
+  trimLongNotes: false,
   noteToKey: {} as Record<number, string>
 });
 
@@ -52,6 +53,7 @@ const initLocalState = () => {
   localKeySettings.minNote = settings.keySettings?.minNote || 48;
   localKeySettings.maxNote = settings.keySettings?.maxNote || 83;
   localKeySettings.blackKeyMode = settings.keySettings?.blackKeyMode || "support_black_key";
+  localKeySettings.trimLongNotes = settings.keySettings?.trimLongNotes || false;
   localKeySettings.noteToKey = { ...(settings.keySettings?.noteToKey || {}) };
 
   localShortcuts.START_PAUSE = settings.shortcuts?.START_PAUSE || "alt+-";
@@ -90,6 +92,7 @@ const presetConfigs = [
     minNote: 48,
     maxNote: 83,
     blackKeyMode: "support_black_key",
+    trimLongNotes: true,
     noteToKey: { ...NOTE_TO_KEY }
   },
   {
@@ -98,6 +101,7 @@ const presetConfigs = [
     minNote: 48,
     maxNote: 83,
     blackKeyMode: "auto_sharp",
+    trimLongNotes: true,
     // 21键模式下，只保留不含组合键的映射（即单键）
     noteToKey: Object.fromEntries(
       Object.entries(NOTE_TO_KEY).filter(([_, key]) => !key.includes('+'))
@@ -106,10 +110,10 @@ const presetConfigs = [
 ];
 
 // 黑键模式选项
-const blackKeyModes = [
-  { value: "support_black_key", label: "支持黑键" },
-  { value: "auto_sharp", label: "黑键降音" }
-];
+// const blackKeyModes = [
+//   { value: "support_black_key", label: "支持黑键" },
+//   { value: "auto_sharp", label: "黑键降音" }
+// ];
 
 // 音符分组数据
 const groupOptions = computed(() => {
@@ -294,7 +298,8 @@ const saveSettings = async () => {
   const keySettingsChanged =
     oldKeySettings.minNote !== localKeySettings.minNote ||
     oldKeySettings.maxNote !== localKeySettings.maxNote ||
-    oldKeySettings.blackKeyMode !== localKeySettings.blackKeyMode;
+    oldKeySettings.blackKeyMode !== localKeySettings.blackKeyMode ||
+    oldKeySettings.trimLongNotes !== localKeySettings.trimLongNotes;
 
   emit("settingsSaved", {
     settings,
@@ -316,6 +321,7 @@ const applyPresetConfig = (presetId: string) => {
     localKeySettings.minNote = preset.minNote;
     localKeySettings.maxNote = preset.maxNote;
     localKeySettings.blackKeyMode = preset.blackKeyMode;
+    localKeySettings.trimLongNotes = preset.trimLongNotes;
     // 更新映射
     localKeySettings.noteToKey = { ...preset.noteToKey };
 
@@ -414,11 +420,24 @@ watch(() => currentTheme?.value, (newVal) => {
 
             <!-- 右侧：黑键设置 (1/3) -->
             <div class="black-key-settings">
-              <div class="radio-group">
-                <label class="radio-label" v-for="mode in blackKeyModes" :key="mode.value">
-                  <input type="radio" v-model="localKeySettings.blackKeyMode" :value="mode.value">
-                  {{ mode.label }}
+              <!-- 黑键模式开关 -->
+              <div class="switch-control">
+                <label class="switch">
+                  <input type="checkbox" :checked="localKeySettings.blackKeyMode === 'support_black_key'"
+                    @change="e => localKeySettings.blackKeyMode = (e.target as HTMLInputElement).checked ? 'support_black_key' : 'auto_sharp'">
+                  <span class="slider round"></span>
                 </label>
+                <span class="switch-label">{{ localKeySettings.blackKeyMode === 'support_black_key' ? '支持黑键' : '黑键降音'
+                  }}</span>
+              </div>
+
+              <!-- 长音修剪开关 -->
+              <div class="switch-control">
+                <label class="switch">
+                  <input type="checkbox" v-model="localKeySettings.trimLongNotes">
+                  <span class="slider round"></span>
+                </label>
+                <span class="switch-label">长音修剪</span>
               </div>
             </div>
           </div>
@@ -518,7 +537,8 @@ watch(() => currentTheme?.value, (newVal) => {
   display: flex;
   gap: 2rem;
   align-items: flex-start;
-  flex-wrap: wrap; /* 允许换行 */
+  flex-wrap: wrap;
+  /* 允许换行 */
 }
 
 .range-settings {
@@ -526,7 +546,8 @@ watch(() => currentTheme?.value, (newVal) => {
   display: flex;
   flex-direction: column;
   gap: 1rem;
-  min-width: 300px; /* 确保在小屏幕下有足够的宽度 */
+  min-width: 300px;
+  /* 确保在小屏幕下有足够的宽度 */
 }
 
 .range-control-group {
@@ -547,23 +568,78 @@ watch(() => currentTheme?.value, (newVal) => {
   flex: 1;
   display: flex;
   flex-direction: column;
-  justify-content: center; /* 与音域设置垂直居中对齐 */
+  justify-content: center;
+  /* 与音域设置垂直居中对齐 */
   min-width: 150px;
 }
 
-.radio-group {
-  display: flex;
-  flex-direction: column;
-  gap: 1rem;
-}
-
-.radio-label {
+.switch-control {
   display: flex;
   align-items: center;
-  gap: 0.5rem;
+  gap: 0.8rem;
+  margin-bottom: 1rem;
+}
+
+.switch-label {
   font-size: 0.9rem;
   color: var(--fg);
+}
+
+/* 开关样式 */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 40px;
+  height: 20px;
+}
+
+.switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.slider {
+  position: absolute;
   cursor: pointer;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px;
+  width: 16px;
+  left: 2px;
+  bottom: 2px;
+  background-color: white;
+  transition: .4s;
+}
+
+input:checked+.slider {
+  background-color: var(--primary);
+}
+
+input:focus+.slider {
+  box-shadow: 0 0 1px var(--primary);
+}
+
+input:checked+.slider:before {
+  transform: translateX(20px);
+}
+
+/* Rounded sliders */
+.slider.round {
+  border-radius: 20px;
+}
+
+.slider.round:before {
+  border-radius: 50%;
 }
 
 /* 按键映射样式 */
@@ -610,15 +686,20 @@ watch(() => currentTheme?.value, (newVal) => {
 }
 
 .note-item label {
-  font-size: 0.95rem; /* 放大字体 */
+  font-size: 0.95rem;
+  /* 放大字体 */
   color: var(--fg);
-  width: 65px; /* 缩小标签宽度至适配文本的合理值 */
-  white-space: nowrap; /* 防止换行 */
+  width: 65px;
+  /* 缩小标签宽度至适配文本的合理值 */
+  white-space: nowrap;
+  /* 防止换行 */
 }
 
 .key-input {
-  flex: none; /* 取消 flex 伸缩 */
-  width: 75px; /* 增加输入框宽度至合理尺寸 */
+  flex: none;
+  /* 取消 flex 伸缩 */
+  width: 75px;
+  /* 增加输入框宽度至合理尺寸 */
   padding: 0.25rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: 4px;

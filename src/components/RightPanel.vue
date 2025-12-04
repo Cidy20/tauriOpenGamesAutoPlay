@@ -101,7 +101,8 @@ watch(() => props.selectedMidiFile, async (newFile) => {
         filePath: newFile,
         minNote: minNote,
         maxNote: maxNote,
-        blackKeyMode: settings.keySettings?.blackKeyMode || "support_black_key"
+        blackKeyMode: settings.keySettings?.blackKeyMode || "support_black_key",
+        trimLongNotes: settings.keySettings?.trimLongNotes || false
       });
       info("[RightPanel.vue:33] 解析成功");
 
@@ -826,7 +827,8 @@ const handleSettingsSaved = async (payload: any) => {
           filePath: props.selectedMidiFile,
           minNote: currentMinNote.value,
           maxNote: currentMaxNote.value,
-          blackKeyMode: newSettings.keySettings?.blackKeyMode || "support_black_key"
+          blackKeyMode: newSettings.keySettings?.blackKeyMode || "support_black_key",
+          trimLongNotes: newSettings.keySettings?.trimLongNotes || false
         });
 
         // 更新事件数据
