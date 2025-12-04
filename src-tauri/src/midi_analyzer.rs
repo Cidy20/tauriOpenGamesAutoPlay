@@ -158,6 +158,7 @@ pub fn analyze_midi_file(
     min_note: u8,
     max_note: u8,
     black_key_mode: &str,
+    trim_long_notes: bool,
 ) -> Result<MidiAnalysis, String> {
     let path = Path::new(file_path);
     if !path.exists() {
@@ -346,7 +347,15 @@ pub fn analyze_midi_file(
                                     active_notes.remove(&(channel, note))
                                 {
                                     let start_time = tick_to_seconds(start_tick);
-                                    let end_time = tick_to_seconds(current_tick);
+                                    let mut end_time = tick_to_seconds(current_tick);
+                                    let mut duration = end_time - start_time;
+
+                                    // 优化：如果持续时间超过1秒且启用了修剪，强制修剪为0.99秒
+                                    if trim_long_notes && duration > 1.0 {
+                                        duration = 0.99;
+                                        end_time = start_time + duration;
+                                    }
+
                                     events.push(MidiEvent {
                                         time: start_time,
                                         type_: "note_on".to_string(),
@@ -354,7 +363,7 @@ pub fn analyze_midi_file(
                                         channel,
                                         track: i,
                                         velocity: start_vel,
-                                        duration: end_time - start_time,
+                                        duration,
                                         end: end_time,
                                     });
                                     events.push(MidiEvent {
@@ -376,7 +385,15 @@ pub fn analyze_midi_file(
                                 active_notes.remove(&(channel, note))
                             {
                                 let start_time = tick_to_seconds(start_tick);
-                                let end_time = tick_to_seconds(current_tick);
+                                let mut end_time = tick_to_seconds(current_tick);
+                                let mut duration = end_time - start_time;
+
+                                // 优化：如果持续时间超过1秒且启用了修剪，强制修剪为0.99秒
+                                if trim_long_notes && duration > 1.0 {
+                                    duration = 0.99;
+                                    end_time = start_time + duration;
+                                }
+
                                 events.push(MidiEvent {
                                     time: start_time,
                                     type_: "note_on".to_string(),
@@ -384,7 +401,7 @@ pub fn analyze_midi_file(
                                     channel,
                                     track: i,
                                     velocity: start_vel,
-                                    duration: end_time - start_time,
+                                    duration,
                                     end: end_time,
                                 });
                                 events.push(MidiEvent {
@@ -404,6 +421,34 @@ pub fn analyze_midi_file(
                 }
                 _ => {}
             }
+        }
+
+        // 处理该音轨中未关闭的音符（自动生成0.2秒的off事件）
+        for ((channel, note), (start_tick, start_vel)) in active_notes {
+            let start_time = tick_to_seconds(start_tick);
+            let duration = 0.2; // 默认给0.2秒
+            let end_time = start_time + duration;
+
+            events.push(MidiEvent {
+                time: start_time,
+                type_: "note_on".to_string(),
+                note,
+                channel,
+                track: i,
+                velocity: start_vel,
+                duration,
+                end: end_time,
+            });
+            events.push(MidiEvent {
+                time: end_time,
+                type_: "note_off".to_string(),
+                note,
+                channel,
+                track: i,
+                velocity: 0,
+                duration: 0.0,
+                end: end_time,
+            });
         }
     }
 

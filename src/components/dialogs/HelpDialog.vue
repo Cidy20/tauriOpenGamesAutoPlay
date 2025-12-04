@@ -13,21 +13,19 @@ const emit = defineEmits<{
 
 // 使用说明文本
 const usageText = ref([
-  "1. 使用管理员权限启动",
+  "1. Win需使用管理员权限启动，Mac需在隐私安全中开启辅助功能",
   "2. 选择MIDI文件和音轨",
   "3. 点击播放按钮开始演奏",
-  "4. 支持36键模式"
+  "4. 最高支持钢琴88键",
+  "5. 支持长音修剪（过长的音符在很多游戏中不支持）",
+  "6. 不支持黑键的游戏会自动降音，如49c#，会自动降为48c",
+  "7. 支持移调（所有音符调整1，c#->c）转位（所有音符调整12，c¹->c）",
+  "8. 支持效果试听，按配置试听播放效果，基本和游戏内效果一致"
 ]);
 </script>
 
 <template>
-  <Dialog
-    :visible="visible"
-    @update:visible="emit('update:visible', $event)"
-    title="帮助"
-    width="400px"
-    height="300px"
-  >
+  <Dialog :visible="visible" @update:visible="emit('update:visible', $event)" title="帮助" width="400px" height="300px">
     <div class="help-content">
       <div class="usage-section">
         <h4 class="section-title">使用说明</h4>
@@ -37,7 +35,7 @@ const usageText = ref([
           </li>
         </ul>
       </div>
-      
+
       <div class="notice-section">
         <h4 class="section-title">注意事项</h4>
         <ul class="notice-list">
@@ -47,7 +45,7 @@ const usageText = ref([
         </ul>
       </div>
     </div>
-    
+
     <template #footer>
       <button class="btn btn-primary" @click="emit('update:visible', false)">
         确定

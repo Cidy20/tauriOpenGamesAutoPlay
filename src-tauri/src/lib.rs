@@ -7,8 +7,15 @@ fn parse_midi(
     min_note: u8,
     max_note: u8,
     black_key_mode: &str,
+    trim_long_notes: bool,
 ) -> Result<midi_analyzer::MidiAnalysis, String> {
-    midi_analyzer::analyze_midi_file(file_path, min_note, max_note, black_key_mode)
+    midi_analyzer::analyze_midi_file(
+        file_path,
+        min_note,
+        max_note,
+        black_key_mode,
+        trim_long_notes,
+    )
 }
 
 #[tauri::command]

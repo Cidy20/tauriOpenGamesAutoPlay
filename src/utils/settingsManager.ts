@@ -23,6 +23,7 @@ interface AppSettings {
     minNote: number;
     maxNote: number;
     blackKeyMode: string;
+    trimLongNotes: boolean;
     noteToKey: Record<number, string>;
   };
   shortcuts?: Record<string, string>;
