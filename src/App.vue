@@ -4,7 +4,8 @@ import themeConfig from "./config/theme.json";
 import LeftPanel from "./components/LeftPanel.vue";
 import RightPanel from "./components/RightPanel.vue";
 import EventTable from "./components/EventTable.vue";
-import SettingsDialog from "./components/dialogs/SettingsDialog.vue";
+import KeySettings from "./components/KeySettings.vue";
+import ShortcutSettings from "./components/ShortcutSettings.vue";
 import Help from "./components/Help.vue";
 import settingsManager from "./utils/settingsManager";
 import shortcutService from "./services/shortcutService";
@@ -21,7 +22,7 @@ const colors = ref(themes.find(t => t.name === currentTheme.value) || themes[0])
 const stayOnTop = ref(false);
 
 // 视图切换管理
-const currentView = ref<'main' | 'events' | 'settings' | 'help'>('main');
+const currentView = ref<'main' | 'events' | 'key_settings' | 'shortcut_settings' | 'help'>('main');
 
 // 组件引用
 const leftPanelRef = ref<InstanceType<typeof LeftPanel> | null>(null);
@@ -32,35 +33,7 @@ const midiEvents = computed(() => {
   return rightPanelRef.value?.midiEvents || [];
 });
 
-// 对话框状态管理 - 设置作为对话框,帮助作为视图
-const showSettingsDialog = ref(false); // 设置仍然使用对话框(因为太复杂)
-
-// 显示设置对话框(设置组件太复杂,暂时保持为对话框)
-const showSettings = () => {
-  showSettingsDialog.value = true;
-};
-
-// 显示帮助视图
-const showHelp = () => {
-  currentView.value = 'help';
-};
-
-// 处理设置保存
-const handleSettingsSaved = async (payload: any) => {
-  info(`[App.vue] 设置已保存`);
-  // 关闭设置视图,返回主窗口
-  showSettingsDialog.value = false;
-  currentView.value = 'main';
-  // 如果analyzerSetting变更,通知RightPanel重新解析
-  if (payload.analyzerSettingChanged && rightPanelRef.value) {
-    // RightPanel会通过watch监听到设置变化并自动重新解析
-  }
-};
-
-// 处理设置关闭
-const handleSettingsClose = () => {
-  showSettingsDialog.value = false;
-};
+// 对话框状态管理 - 所有设置现在都作为视图显示
 
 // 切换主题
 const changeTheme = async (themeName: string) => {
@@ -90,11 +63,8 @@ const updateCSSVariables = (theme: any) => {
 };
 
 // 切换视图
-const switchView = (view: 'main' | 'events' | 'settings' | 'help') => {
+const switchView = (view: 'main' | 'events' | 'key_settings' | 'shortcut_settings' | 'help') => {
   currentView.value = view;
-  if (view === 'settings') {
-    showSettingsDialog.value = true;
-  }
   info(`[App.vue] 切换视图到: ${view}`);
 };
 
@@ -254,10 +224,15 @@ provide('settingsManager', settingsManager);
           <button class="menu-item" :class="{ active: currentView === 'events' }" @click="switchView('events')">
             事件表
           </button>
-          <button class="menu-item" @click="showSettings">
-            设置
+          <button class="menu-item" :class="{ active: currentView === 'key_settings' }"
+            @click="switchView('key_settings')">
+            按键设置
           </button>
-          <button class="menu-item" @click="showHelp">
+          <button class="menu-item" :class="{ active: currentView === 'shortcut_settings' }"
+            @click="switchView('shortcut_settings')">
+            快捷键设置
+          </button>
+          <button class="menu-item" :class="{ active: currentView === 'help' }" @click="switchView('help')">
             帮助
           </button>
         </div>
@@ -288,10 +263,14 @@ provide('settingsManager', settingsManager);
         <EventTable :events="midiEvents" />
       </div>
 
-      <!-- 设置视图 -->
-      <div class="view-container" v-show="currentView === 'settings'">
-        <SettingsDialog :visible="currentView === 'settings'" @update:visible="handleSettingsClose"
-          @settingsSaved="handleSettingsSaved" />
+      <!-- 按键设置视图 -->
+      <div class="view-container" v-show="currentView === 'key_settings'">
+        <KeySettings />
+      </div>
+
+      <!-- 快捷键设置视图 -->
+      <div class="view-container" v-show="currentView === 'shortcut_settings'">
+        <ShortcutSettings />
       </div>
 
       <!-- 帮助视图 -->
@@ -299,9 +278,6 @@ provide('settingsManager', settingsManager);
         <Help />
       </div>
     </main>
-
-    <!-- 设置对话框(组件太复杂,暂时保持为对话框) -->
-    <SettingsDialog v-model:visible="showSettingsDialog" @settingsSaved="handleSettingsSaved" />
   </div>
 </template>
 
