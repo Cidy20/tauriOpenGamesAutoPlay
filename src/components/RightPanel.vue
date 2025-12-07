@@ -2,9 +2,6 @@
 <script setup lang="ts">
 import { ref, defineProps, watch, onMounted, onUnmounted, computed, inject } from "vue";
 import { invoke } from "@tauri-apps/api/core";
-import EventTableDialog from "./dialogs/EventTableDialog.vue";
-import SettingsDialog from "./dialogs/SettingsDialog.vue";
-import HelpDialog from "./dialogs/HelpDialog.vue";
 import { info, error } from '@tauri-apps/plugin-log';
 import { getNoteName, groupForNote } from "../config/groups";
 import { NOTE_TO_KEY } from "../config/keyboard_mapping";
@@ -834,78 +831,7 @@ const formatTime = (seconds: number): string => {
   return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
 };
 
-// 对话框显示状态
-const showEventTableDialog = ref(false);
-const showSettingsDialog = ref(false);
-const showHelpDialog = ref(false);
-
-// 显示事件表
-const showEventTable = () => {
-  showEventTableDialog.value = true;
-};
-
-// 显示设置
-const showSettings = () => {
-  showSettingsDialog.value = true;
-};
-
-// 显示帮助
-const showHelp = () => {
-  showHelpDialog.value = true;
-};
-
-// 处理设置保存
-const handleSettingsSaved = async (payload: any) => {
-  info(`[RightPanel.vue:2929] 设置已保存`);
-
-  // 检查 analyzerSetting 是否变更
-  if (payload.analyzerSettingChanged) {
-    info('[RightPanel.vue] analyzerSetting 已变更，更新当前显示范围');
-
-    // 更新当前显示的 min/max note
-    const newSettings = settingsManager.getSettings();
-    currentMinNote.value = newSettings.analyzerSetting?.minNote || 48;
-    currentMaxNote.value = newSettings.analyzerSetting?.maxNote || 83;
-
-    // 如果有选中的 MIDI 文件，重新解析
-    if (props.selectedMidiFile) {
-      info(`[RightPanel.vue] 检测到 analyzerSetting 变更且有选中文件，重新解析: ${props.selectedMidiFile}`);
-      try {
-        const result: any = await invoke("parse_midi", {
-          filePath: props.selectedMidiFile,
-          minNote: currentMinNote.value,
-          maxNote: currentMaxNote.value,
-          blackKeyMode: newSettings.analyzerSetting?.blackKeyMode || "support_black_key",
-          trimLongNotes: newSettings.analyzerSetting?.trimLongNotes || false
-        });
-
-        // 更新事件数据
-        if (result.events) {
-          originalMidiEvents.value = JSON.parse(JSON.stringify(result.events));
-          midiEvents.value = result.events;
-        }
-
-        // 更新音轨列表
-        if (result.tracks) {
-          tracks.value = result.tracks.map((t: any) => ({
-            id: t.id,
-            name: t.name,
-            noteCount: t.note_count,
-            selected: true,
-            transpose: 0,
-            octave: 0,
-            analysis: t.analysis
-          }));
-          allTracksSelected.value = true;
-        }
-
-        info('[RightPanel.vue] MIDI 文件重新解析完成');
-      } catch (e) {
-        error(`[RightPanel.vue] 重新解析 MIDI 失败: ${e}`);
-      }
-    }
-  }
-};
+// 对话框显示状态已移除,事件表/设置/帮助已移到App.vue头部菜单
 
 // 格式化音轨分析文本（返回对象，包含可点击部分）
 const getTrackAnalysisLines = (track: Track) => {
@@ -1090,26 +1016,9 @@ defineExpose({
           <!-- <button class="btn btn-secondary" @click="testSound">测试声音</button> -->
         </div>
       </div>
-
-      <!-- 其他功能 -->
-      <div class="other-frame">
-        <h3 class="frame-title">其他</h3>
-
-        <!-- 其他按钮 -->
-        <div class="other-buttons-section">
-          <button class="btn btn-secondary" @click="showEventTable">事件表</button>
-          <button class="btn btn-secondary" @click="showSettings">设置</button>
-          <button class="btn btn-secondary" @click="showHelp">帮助</button>
-        </div>
-      </div> <!-- Closing other-frame -->
     </div>
   </section>
 
-  <!-- 事件表对话框 -->
-  <EventTableDialog :visible="showEventTableDialog" @update:visible="showEventTableDialog = $event"
-    :events="filteredMidiEvents" />
-  <SettingsDialog v-model:visible="showSettingsDialog" @settingsSaved="handleSettingsSaved" />
-  <HelpDialog v-model:visible="showHelpDialog" />
 </template>
 
 <style scoped>
