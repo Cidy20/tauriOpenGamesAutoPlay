@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import { ref, onMounted, defineEmits, inject } from "vue";
-import { Window } from '@tauri-apps/api/window';
 import { info } from '@tauri-apps/plugin-log';
 import { open } from '@tauri-apps/plugin-dialog'; // 引入 dialog API
 import { readDir } from '@tauri-apps/plugin-fs'; // 引入 fs API
@@ -11,8 +10,6 @@ import { join } from '@tauri-apps/api/path';
 const settingsManager = inject('settingsManager') as any;
 
 // 左侧面板组件
-const stayOnTop = ref(false);
-info(`[LeftPanel.vue:55] stayOnTop变量初始化: ${stayOnTop.value}`);
 const searchText = ref("搜索歌曲...");
 const midiFiles = ref<string[]>(["测试歌曲-忘记时间-胡歌.mid"]);
 const allMidiFiles = ref<string[]>(["测试歌曲-忘记时间-胡歌.mid"]); // 用于存储所有MIDI文件
@@ -21,55 +18,10 @@ const currentFolderPath = ref<string>("");
 
 const emit = defineEmits(['update:selectedSong']);
 
-// 窗口置顶切换
-const toggleStayOnTop = async () => {
-  try {
-    const currentWindow = Window.getCurrent();
-    info('[LeftPanel.vue:66] 获取当前窗口实例成功');
-
-    // 首先获取当前的实际状态
-    const currentState = await currentWindow.isAlwaysOnTop();
-    info(`[LeftPanel.vue:77] 获取到的当前实际窗口状态: ${currentState}`);
-
-    // 计算目标状态（与当前状态相反）
-    const targetState = !currentState;
-    info(`[LeftPanel.vue:88] 准备切换窗口置顶状态到: ${targetState}`);
-
-    // 设置新状态
-    await currentWindow.setAlwaysOnTop(targetState);
-    info(`[LeftPanel.vue:99] 窗口置顶状态已设置为: ${targetState}`);
-
-    // 验证设置是否生效
-    const verificationState = await currentWindow.isAlwaysOnTop();
-    info(`[LeftPanel.vue:1010] 验证后的窗口置顶状态: ${verificationState}`);
-
-    // 更新本地状态变量
-    stayOnTop.value = verificationState;
-    info(`[LeftPanel.vue:1111] 本地stayOnTop变量已更新为: ${stayOnTop.value}`);
-  } catch (error) {
-    info(`[LeftPanel.vue:1212] 切换窗口置顶状态失败: ${error}`);
-    // 出错时重新获取实际状态以保持同步
-    try {
-      const currentWindow = Window.getCurrent();
-      const actualState = await currentWindow.isAlwaysOnTop();
-      stayOnTop.value = actualState;
-      info(`[LeftPanel.vue:1313] 出错后同步的实际窗口状态: ${actualState}`);
-    } catch (syncError) {
-      info(`[LeftPanel.vue:1414] 同步实际状态失败: ${syncError}`);
-    }
-  }
-};
-
-// 组件挂载时检查窗口当前置顶状态
-// 组件挂载时检查窗口当前置顶状态
+// 组件挂载时加载MIDI文件夹
 onMounted(async () => {
-  info('[LeftPanel.vue:1515] 组件挂载，开始检查窗口置顶状态和加载MIDI文件夹');
+  info('[LeftPanel.vue] 组件挂载，开始加载MIDI文件夹');
   try {
-    const currentWindow = Window.getCurrent();
-    info('[LeftPanel.vue:1616] 获取当前窗口实例成功');
-    const currentState = await currentWindow.isAlwaysOnTop();
-    info(`[LeftPanel.vue:1717] 获取到的初始窗口置顶状态: ${currentState}`);
-    stayOnTop.value = currentState;
 
     // 等待 settingsManager 初始化完成
     await settingsManager.initialize();
@@ -210,14 +162,6 @@ defineExpose({
 
 <template>
   <aside class="left-panel">
-    <!-- 置顶复选框 -->
-    <div class="top-section">
-      <div class="checkbox-item">
-        <input type="checkbox" id="stayOnTop" v-model="stayOnTop" @change="toggleStayOnTop" />
-        <label for="stayOnTop">窗口置顶</label>
-      </div>
-    </div>
-
     <!-- 文件选择按钮 -->
     <div class="file-select-section">
       <button class="btn btn-primary" @click="selectDirectory">
@@ -254,28 +198,6 @@ defineExpose({
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.top-section {
-  padding: 0.5rem 1rem;
-  background-color: var(--active);
-  border-bottom: 1px solid var(--border);
-}
-
-.checkbox-item {
-  display: flex;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.checkbox-item input[type="checkbox"] {
-  accent-color: var(--primary);
-}
-
-.checkbox-item label {
-  font-size: 0.9rem;
-  color: var(--fg);
-  cursor: pointer;
 }
 
 .file-select-section {

@@ -20,6 +20,9 @@ interface AppSettings {
   themeSettings: {
     currentTheme: string;
   };
+  windowSettings?: {
+    stayOnTop: boolean;
+  };
   analyzerSetting?: {
     minNote: number;
     maxNote: number;
@@ -46,6 +49,9 @@ class SettingsManager {
   private defaultSettings: AppSettings = {
     themeSettings: {
       currentTheme: 'default'
+    },
+    windowSettings: {
+      stayOnTop: false
     },
     analyzerSetting: {
       minNote: 48,
@@ -181,6 +187,10 @@ class SettingsManager {
           // 合并到全局配置变量
           this.settings = {
             themeSettings: { ...this.defaultSettings.themeSettings, ...(parsedSettings.themeSettings || {}) },
+            windowSettings: parsedSettings.windowSettings ? {
+              ...this.defaultSettings.windowSettings,
+              ...parsedSettings.windowSettings
+            } : this.defaultSettings.windowSettings,
             analyzerSetting: parsedSettings.analyzerSetting ? {
               ...this.defaultSettings.analyzerSetting,
               ...parsedSettings.analyzerSetting
@@ -219,6 +229,10 @@ class SettingsManager {
           ...this.settings.themeSettings,
           ...(settings.themeSettings || {})
         },
+        windowSettings: settings.windowSettings ? {
+          ...this.settings.windowSettings,
+          ...settings.windowSettings
+        } : this.settings.windowSettings,
         analyzerSetting: settings.analyzerSetting ? {
           ...this.settings.analyzerSetting,
           ...settings.analyzerSetting
@@ -331,6 +345,18 @@ class SettingsManager {
   loadMidiFolderPath(): string | undefined {
     info('[settingsManager.ts] 从内存加载MIDI文件夹路径');
     return this.settings.midiFolderPath;
+  }
+
+  // 保存窗口置顶状态
+  async saveStayOnTop(stayOnTop: boolean): Promise<void> {
+    info(`[settingsManager.ts] 保存窗口置顶状态: ${stayOnTop}`);
+    await this.saveSettings({ windowSettings: { stayOnTop } });
+  }
+
+  // 从内存读取窗口置顶状态
+  loadStayOnTop(): boolean {
+    info('[settingsManager.ts] 从内存加载窗口置顶状态');
+    return this.settings.windowSettings?.stayOnTop ?? false;
   }
 }
 

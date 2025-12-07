@@ -965,15 +965,17 @@ const applySuggestion = (track: Track, type: 'max' | 'min') => {
   } else if (type === 'min' && analysis.suggested_min_transpose !== null && analysis.suggested_min_octave !== null) {
     track.transpose = analysis.suggested_min_transpose;
     track.octave = analysis.suggested_min_octave;
-    info(`[RightPanel.vue:3232] 应用最低音建议: 移调${track.transpose}, 转位${track.octave}`);
+    info(`[RightPanel.vue:3232] 应用最低音建议: 移调${track.transpose}, 转位${track.octave}`)
+      ;
     reanalyzeTrack(track);
   }
 };
 
-// 暴露方法给父组件（用于快捷键调用）
+// 暴露方法和数据给父组件(用于快捷键调用和事件表显示)
 defineExpose({
   togglePlay,
-  stopPlayback
+  stopPlayback,
+  midiEvents
 });
 
 </script>
