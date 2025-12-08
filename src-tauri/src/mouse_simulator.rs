@@ -240,20 +240,74 @@ pub fn stop_mouse_playback() -> Result<(), String> {
 }
 
 /// 选择鼠标坐标
-/// 等待用户点击鼠标，返回点击位置的坐标
+/// 监听全局鼠标点击事件,返回点击位置的坐标
 pub async fn pick_coordinate() -> Result<(i32, i32), String> {
-    // 创建 Enigo 实例获取当前鼠标位置
-    let enigo = Enigo::new(&Settings::default())
-        .map_err(|e| format!("Failed to create Enigo instance: {:?}", e))?;
+    use rdev::{listen, Button, Event, EventType};
+    use std::sync::mpsc::channel;
+    use std::sync::{
+        atomic::{AtomicBool, Ordering},
+        Arc, Mutex,
+    };
+    use std::time::Duration;
 
-    // 获取当前鼠标位置
-    let (x, y) = enigo
-        .location()
-        .map_err(|e| format!("Failed to get mouse location: {:?}", e))?;
+    // 创建通道用于传递坐标
+    let (tx, rx) = channel::<(i32, i32)>();
 
-    // 注意：这是一个简化实现
-    // 实际应该监听鼠标点击事件，但 enigo 不直接支持事件监听
-    // 这里返回当前位置作为示例
-    // 在实际使用中，前端应该通过其他方式（如浏览器API）获取点击坐标
-    Ok((x, y))
+    // 创建停止标志
+    let stop_flag = Arc::new(AtomicBool::new(false));
+    let stop_flag_clone = stop_flag.clone();
+
+    // 用于跟踪最后的鼠标位置
+    let last_position = Arc::new(Mutex::new((0, 0)));
+    let last_position_clone = last_position.clone();
+
+    // 启动监听线程
+    let _listen_thread = thread::spawn(move || {
+        // 监听回调函数
+        let callback = move |event: Event| {
+            // 检查是否需要停止
+            if stop_flag_clone.load(Ordering::Relaxed) {
+                return;
+            }
+
+            match event.event_type {
+                EventType::MouseMove { x, y } => {
+                    // 更新最后的鼠标位置
+                    if let Ok(mut pos) = last_position_clone.lock() {
+                        *pos = (x as i32, y as i32);
+                    }
+                }
+                EventType::ButtonPress(Button::Left) => {
+                    // 捕获鼠标左键点击,发送最后记录的位置
+                    if let Ok(pos) = last_position_clone.lock() {
+                        let _ = tx.send(*pos);
+                    }
+                    // 设置停止标志
+                    stop_flag_clone.store(true, Ordering::Relaxed);
+                }
+                _ => {}
+            }
+        };
+
+        // 开始监听
+        if let Err(e) = listen(callback) {
+            eprintln!("监听鼠标事件失败: {:?}", e);
+        }
+    });
+
+    // 等待接收坐标(30秒超时)
+    match rx.recv_timeout(Duration::from_secs(30)) {
+        Ok((x, y)) => {
+            // 设置停止标志
+            stop_flag.store(true, Ordering::Relaxed);
+            // 给监听线程一点时间停止
+            thread::sleep(Duration::from_millis(100));
+            Ok((x, y))
+        }
+        Err(_) => {
+            // 超时,设置停止标志
+            stop_flag.store(true, Ordering::Relaxed);
+            Err("等待鼠标点击超时(30秒)".to_string())
+        }
+    }
 }
