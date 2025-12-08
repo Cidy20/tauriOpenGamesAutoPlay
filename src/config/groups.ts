@@ -27,7 +27,7 @@ for (let noteNumber = 21; noteNumber <= 108; noteNumber++) {
   const noteIndex = noteNumber % 12;
   let noteName = NOTE_NAMES[noteIndex];
   let octaveSymbol = '';
-  
+
   // 确定八度符号和音符大小写
   if (noteNumber >= 60) {
     // 小字一组及以上（使用小写字母）
@@ -58,7 +58,7 @@ for (let noteNumber = 21; noteNumber <= 108; noteNumber++) {
     noteName = noteName.toUpperCase();
     octaveSymbol = '₂';
   }
-  
+
   // 组合音符名称和八度
   const fullNoteName = `${noteName}${octaveSymbol}`;
   NOTE_NAME_MAP[noteNumber] = fullNoteName;
@@ -78,12 +78,19 @@ export function groupForNote(note: number): string {
 
 export function getNoteName(note: number): string {
   /*
-   * 根据音符数字获取标准钢琴音符名称
-   * 例如：60 为 c¹，61 为 c¹#，62 为 d¹
+   * 根据音符数字获取标准钢琴音符名称,并添加简谱前缀
+   * 例如:60 为 1c¹,61 为 1c¹#,62 为 2d¹,53 为 4f
    */
   // 检查音符是否在有效范围内
   if (21 <= note && note <= 108) {
-    return NOTE_NAME_MAP[note] || String(note);
+    const noteName = NOTE_NAME_MAP[note] || String(note);
+
+    // 添加简谱数字前缀
+    const noteIndex = note % 12;
+    // C=1, C#=1, D=2, D#=2, E=3, F=4, F#=4, G=5, G#=5, A=6, A#=6, B=7
+    const solfege = [1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6, 7][noteIndex];
+
+    return `${solfege}${noteName}`;
   }
   return String(note);
 }
@@ -97,15 +104,15 @@ export function filterNotesByGroups(notes: NoteEvent[], selectedGroups: string[]
   if (!selectedGroups || selectedGroups.length === 0) {
     return notes;
   }
-  
+
   const ranges = selectedGroups
     .filter(name => name in GROUPS)
     .map(name => GROUPS[name]);
-  
+
   if (ranges.length === 0) {
     return notes;
   }
-  
+
   return notes.filter(ev => {
     if (!ev.note) return false;
     return ranges.some(([lo, hi]) => lo <= ev.note! && ev.note! <= hi);

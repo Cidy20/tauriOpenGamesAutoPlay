@@ -292,11 +292,18 @@ const saveSettings = async () => {
 
   // 保留原有的 noteToMouse 配置(不清空鼠标坐标设置)
   const currentSettings = settingsManager.getSettings();
+
+  // 如果当前是鼠标模拟,使用 localSimulationSettings 的 noteToMouse
+  // 否则从配置文件读取以保留原有配置
+  const noteToMouseToSave = localSimulationSettings.simulationType === 'mouse'
+    ? localSimulationSettings.noteToMouse
+    : (currentSettings.simulationSettings?.noteToMouse || {});
+
   const settings = {
     analyzerSetting: { ...localAnalyzerSettings },
     simulationSettings: {
       ...localSimulationSettings,
-      noteToMouse: currentSettings.simulationSettings?.noteToMouse || {}
+      noteToMouse: noteToMouseToSave
     },
     shortcuts: { ...localShortcuts },
     themeSettings: { ...localThemeSettings }
@@ -511,7 +518,7 @@ const pickCoordinate = async (note: number) => {
                 </label>
                 <span class="switch-label">{{ localAnalyzerSettings.blackKeyMode === 'support_black_key' ? '支持黑键' :
                   '黑键降音'
-                  }}</span>
+                }}</span>
               </div>
 
               <!-- 长音修剪开关 -->
