@@ -97,16 +97,16 @@ const getNotesInGroup = (groupName: string) => {
 // 初始化本地状态
 const initLocalState = () => {
   const settings = settingsManager.getSettings();
-  
+
   localAnalyzerSettings.minNote = settings.analyzerSetting?.minNote || 48;
   localAnalyzerSettings.maxNote = settings.analyzerSetting?.maxNote || 83;
   localAnalyzerSettings.blackKeyMode = settings.analyzerSetting?.blackKeyMode || "support_black_key";
   localAnalyzerSettings.trimLongNotes = settings.analyzerSetting?.trimLongNotes || false;
-  
+
   localSimulationSettings.simulationType = settings.simulationSettings?.simulationType || "keyboard";
   localSimulationSettings.noteToKey = { ...(settings.simulationSettings?.noteToKey || {}) };
   localSimulationSettings.noteToMouse = { ...(settings.simulationSettings?.noteToMouse || {}) };
-  
+
   updateDropdownsFromNote('min', localAnalyzerSettings.minNote);
   updateDropdownsFromNote('max', localAnalyzerSettings.maxNote);
 };
@@ -148,33 +148,33 @@ const displayNoteGroups = computed(() => {
   const min = localAnalyzerSettings.minNote;
   const max = localAnalyzerSettings.maxNote;
   const blackKeyMode = localAnalyzerSettings.blackKeyMode;
-  
+
   for (const [groupName, [lo, hi]] of Object.entries(GROUPS)) {
     if (hi < min || lo > max) continue;
-    
+
     const notesInGroup: { note: number; name: string; key: string }[] = [];
     const start = Math.max(lo, min);
     const end = Math.min(hi, max);
-    
+
     for (let i = start; i <= end; i++) {
       if (blackKeyMode === 'auto_sharp') {
         const noteIndex = i % 12;
         const isBlackKey = [1, 3, 6, 8, 10].includes(noteIndex);
         if (isBlackKey) continue;
       }
-      
+
       const noteName = getNoteName(i);
       const key = localSimulationSettings.noteToKey[i] !== undefined
         ? localSimulationSettings.noteToKey[i]
         : (NOTE_TO_KEY[i] || '');
-      
+
       notesInGroup.push({
         note: i,
         name: `${noteName} (${i})`,
         key: key
       });
     }
-    
+
     if (notesInGroup.length > 0) {
       groups.push({
         name: groupName,
@@ -182,7 +182,7 @@ const displayNoteGroups = computed(() => {
       });
     }
   }
-  
+
   groups.sort((a, b) => a.notes[0].note - b.notes[0].note);
   return groups;
 });
@@ -201,13 +201,13 @@ const applyPresetConfig = (presetId: string) => {
     localAnalyzerSettings.maxNote = preset.maxNote;
     localAnalyzerSettings.blackKeyMode = preset.blackKeyMode;
     localAnalyzerSettings.trimLongNotes = preset.trimLongNotes;
-    
+
     if (preset.simulationType) {
       localSimulationSettings.simulationType = preset.simulationType as 'keyboard' | 'mouse';
     }
-    
+
     localSimulationSettings.noteToKey = { ...preset.noteToKey };
-    
+
     updateDropdownsFromNote('min', preset.minNote);
     updateDropdownsFromNote('max', preset.maxNote);
   }
@@ -229,28 +229,28 @@ const pickCoordinate = async (note: number) => {
   try {
     info(`[KeySettings.vue] 开始选择音符${note}的坐标`);
     pickingNote.value = note;
-    
+
     const { getCurrentWindow } = await import('@tauri-apps/api/window');
     const { invoke } = await import('@tauri-apps/api/core');
-    
+
     const appWindow = getCurrentWindow();
     await appWindow.minimize();
     await new Promise(resolve => setTimeout(resolve, 1000));
-    
+
     const result = await invoke<[number, number]>('pick_mouse_coordinate');
     const [x, y] = result;
-    
+
     info(`[KeySettings.vue] 获取到鼠标位置: (${x}, ${y})`);
     localSimulationSettings.noteToMouse[note] = { x, y };
-    
+
     await appWindow.unminimize();
     pickingNote.value = null;
-    
+
     info(`[KeySettings.vue] 音符${note}的坐标已设置为: (${x}, ${y})`);
   } catch (e) {
     error(`[KeySettings.vue] 选择坐标失败: ${e}`);
     pickingNote.value = null;
-    
+
     try {
       const { getCurrentWindow } = await import('@tauri-apps/api/window');
       await getCurrentWindow().unminimize();
@@ -262,43 +262,43 @@ const pickCoordinate = async (note: number) => {
 const saveSettings = async () => {
   const oldSettings = settingsManager.getSettings();
   const oldAnalyzerSetting = oldSettings.analyzerSetting || {};
-  
+
   const fullNoteToKey: Record<number, string> = {};
   const min = localAnalyzerSettings.minNote;
   const max = localAnalyzerSettings.maxNote;
   const blackKeyMode = localAnalyzerSettings.blackKeyMode;
-  
+
   for (let i = min; i <= max; i++) {
     if (blackKeyMode === 'auto_sharp') {
       const noteIndex = i % 12;
       const isBlackKey = [1, 3, 6, 8, 10].includes(noteIndex);
       if (isBlackKey) continue;
     }
-    
+
     const key = localSimulationSettings.noteToKey[i] !== undefined
       ? localSimulationSettings.noteToKey[i]
       : (NOTE_TO_KEY[i] || '');
-    
+
     if (key !== undefined) {
       fullNoteToKey[i] = key;
     }
   }
-  
+
   localSimulationSettings.noteToKey = fullNoteToKey;
-  
+
   const settings = {
     analyzerSetting: { ...localAnalyzerSettings },
     simulationSettings: { ...localSimulationSettings }
   };
-  
+
   await settingsManager.saveSettings(settings);
-  
+
   const analyzerSettingChanged =
     oldAnalyzerSetting.minNote !== localAnalyzerSettings.minNote ||
     oldAnalyzerSetting.maxNote !== localAnalyzerSettings.maxNote ||
     oldAnalyzerSetting.blackKeyMode !== localAnalyzerSettings.blackKeyMode ||
     oldAnalyzerSetting.trimLongNotes !== localAnalyzerSettings.trimLongNotes;
-  
+
   info("[KeySettings.vue] 按键设置已保存");
   alert("按键设置已保存!" + (analyzerSettingChanged ? "\n音域设置已变更,请重新选择MIDI文件以应用新设置。" : ""));
 };
@@ -306,17 +306,24 @@ const saveSettings = async () => {
 
 <template>
   <div class="key-settings-view">
-    <h2 class="view-title">按键设置</h2>
-    
+    <!-- 保存按钮 -->
+    <div class="top-actions">
+      <button @click="saveSettings" class="btn btn-primary">
+        保存设置
+      </button>
+    </div>
+
     <div class="settings-content">
       <!-- 预设配置 -->
       <div class="setting-section">
-        <h4 class="section-title">预设配置</h4>
-        <div class="preset-buttons">
-          <button v-for="preset in presetConfigs" :key="preset.id" class="btn btn-small"
-            @click="applyPresetConfig(preset.id)">
-            {{ preset.name }}
-          </button>
+        <div class="preset-header">
+          <h4 class="section-title">预设配置</h4>
+          <div class="preset-buttons">
+            <button v-for="preset in presetConfigs" :key="preset.id" class="btn btn-small"
+              @click="applyPresetConfig(preset.id)">
+              {{ preset.name }}
+            </button>
+          </div>
         </div>
       </div>
 
@@ -370,7 +377,8 @@ const saveSettings = async () => {
                   @change="e => localAnalyzerSettings.blackKeyMode = (e.target as HTMLInputElement).checked ? 'support_black_key' : 'auto_sharp'">
                 <span class="slider round"></span>
               </label>
-              <span class="switch-label">{{ localAnalyzerSettings.blackKeyMode === 'support_black_key' ? '支持黑键' : '黑键降音' }}</span>
+              <span class="switch-label">{{ localAnalyzerSettings.blackKeyMode === 'support_black_key' ? '支持黑键' : '黑键降音'
+                }}</span>
             </div>
 
             <!-- 长音修剪开关 -->
@@ -406,8 +414,8 @@ const saveSettings = async () => {
           <div v-for="group in displayNoteGroups" :key="group.name" class="note-group">
             <div class="group-header">{{ group.name }}</div>
             <div class="group-notes">
-              <div v-for="note in group.notes" :key="note.note" class="note-item">
-                <label>{{ note.name }}:</label>
+              <div v-for="note in group.notes" :key="note.note" class="note-item-horizontal">
+                <label>{{ note.name }}</label>
                 <input type="text" class="key-input" :value="note.key"
                   @input="e => updateNoteKey(note.note, (e.target as HTMLInputElement).value)" placeholder="未设置">
               </div>
@@ -420,9 +428,9 @@ const saveSettings = async () => {
           <div v-for="group in displayNoteGroups" :key="group.name" class="note-group">
             <div class="group-header">{{ group.name }}</div>
             <div class="group-notes">
-              <div v-for="note in group.notes" :key="note.note" class="note-item"
+              <div v-for="note in group.notes" :key="note.note" class="note-item-horizontal"
                 :class="{ 'picking': pickingNote === note.note }">
-                <label>{{ note.name }}:</label>
+                <label>{{ note.name }}</label>
                 <input type="text" class="key-input" :value="formatMouseCoordinate(note.note)" disabled
                   placeholder="未设置">
                 <button class="btn-pick-coordinate" @click="pickCoordinate(note.note)"
@@ -439,13 +447,6 @@ const saveSettings = async () => {
           </div>
         </div>
       </div>
-
-      <!-- 保存按钮 -->
-      <div class="button-group">
-        <button @click="saveSettings" class="btn btn-primary">
-          保存设置
-        </button>
-      </div>
     </div>
   </div>
 </template>
@@ -461,13 +462,11 @@ const saveSettings = async () => {
   overflow-y: auto;
 }
 
-.view-title {
-  font-size: 1.5rem;
-  font-weight: 600;
-  color: var(--fg);
-  margin-bottom: 2rem;
-  padding-bottom: 1rem;
-  border-bottom: 2px solid var(--border);
+/* 顶部操作区 */
+.top-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 1.5rem;
 }
 
 .settings-content {
@@ -482,10 +481,17 @@ const saveSettings = async () => {
   font-size: 1.1rem;
   font-weight: 600;
   color: var(--primary);
-  margin-bottom: 1rem;
+  margin: 0;
 }
 
 /* 预设配置 */
+.preset-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
 .preset-buttons {
   display: flex;
   gap: 1rem;
@@ -700,6 +706,21 @@ input:checked+.slider:before {
   color: var(--fg);
 }
 
+/* 水平排列的音符项 */
+.note-item-horizontal {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.note-item-horizontal label {
+  font-size: 0.8rem;
+  color: var(--fg);
+  min-width: 60px;
+  flex-shrink: 0;
+}
+
 .key-input {
   padding: 0.3rem;
   border: 1px solid var(--border);
@@ -707,6 +728,7 @@ input:checked+.slider:before {
   background-color: var(--inputbg);
   color: var(--inputfg);
   font-size: 0.85rem;
+  max-width: 120px;
 }
 
 .key-input:focus {
@@ -747,17 +769,11 @@ input:checked+.slider:before {
   fill: currentColor;
 }
 
-.note-item.picking {
+.note-item.picking,
+.note-item-horizontal.picking {
   background-color: var(--active);
   padding: 0.25rem;
   border-radius: 4px;
-}
-
-/* 按钮 */
-.button-group {
-  display: flex;
-  gap: 1rem;
-  margin-top: 2rem;
 }
 
 .btn {
