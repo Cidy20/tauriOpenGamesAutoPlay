@@ -94,12 +94,47 @@ pub struct MidiAnalysis {
 }
 
 fn get_note_name(note: u8) -> String {
+    // 音符名称(小写)
     let note_names = [
-        "C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B",
+        "c", "c#", "d", "d#", "e", "f", "f#", "g", "g#", "a", "a#", "b",
     ];
-    let octave = (note as i32 / 12) - 1;
+
+    // 简谱数字: C=1, C#=1, D=2, D#=2, E=3, F=4, F#=4, G=5, G#=5, A=6, A#=6, B=7
+    let solfege = [1, 1, 2, 2, 3, 4, 4, 5, 5, 6, 6, 7];
+
     let note_index = (note as usize) % 12;
-    format!("{}{}", note_names[note_index], octave)
+    let mut note_name = note_names[note_index].to_string();
+    let solfege_num = solfege[note_index];
+
+    // 确定八度符号和音符大小写
+    let octave_symbol = if note >= 60 {
+        // 小字一组及以上(使用小写字母)
+        match note {
+            60..=71 => "¹",  // 小字一组
+            72..=83 => "²",  // 小字二组
+            84..=95 => "³",  // 小字三组
+            96..=107 => "⁴", // 小字四组
+            _ => "⁵",        // 小字五组
+        }
+    } else if note >= 48 {
+        // 小字组 (48-59)
+        ""
+    } else if note >= 36 {
+        // 大字组 (36-47)
+        note_name = note_name.to_uppercase();
+        ""
+    } else if note >= 24 {
+        // 大字一组 (24-35)
+        note_name = note_name.to_uppercase();
+        "₁"
+    } else {
+        // 大字二组 (21-23)
+        note_name = note_name.to_uppercase();
+        "₂"
+    };
+
+    // 组合: 简谱数字 + 音符名 + 八度符号
+    format!("{}{}{}", solfege_num, note_name, octave_symbol)
 }
 
 fn get_note_group(note: u8) -> String {

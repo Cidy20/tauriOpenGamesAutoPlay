@@ -263,6 +263,13 @@ pub async fn pick_coordinate() -> Result<(i32, i32), String> {
 
     // 启动监听线程
     let _listen_thread = thread::spawn(move || {
+        // Windows: 在监听线程中加载十字准星光标
+        #[cfg(target_os = "windows")]
+        let cross_cursor = unsafe {
+            use windows::Win32::UI::WindowsAndMessaging::{LoadCursorW, IDC_CROSS};
+            LoadCursorW(None, IDC_CROSS).ok()
+        };
+
         // 监听回调函数,返回 Option<Event> 来控制事件传播
         let callback = move |event: Event| -> Option<Event> {
             // 检查是否需要停止
@@ -272,6 +279,15 @@ pub async fn pick_coordinate() -> Result<(i32, i32), String> {
 
             match event.event_type {
                 EventType::MouseMove { x, y } => {
+                    // Windows: 每次鼠标移动时设置十字准星光标
+                    #[cfg(target_os = "windows")]
+                    if let Some(cursor) = cross_cursor {
+                        unsafe {
+                            use windows::Win32::UI::WindowsAndMessaging::SetCursor;
+                            SetCursor(cursor);
+                        }
+                    }
+
                     // 更新最后的鼠标位置
                     if let Ok(mut pos) = last_position_clone.lock() {
                         *pos = (x as i32, y as i32);
@@ -310,11 +326,33 @@ pub async fn pick_coordinate() -> Result<(i32, i32), String> {
             stop_flag.store(true, Ordering::Relaxed);
             // 给监听线程一点时间停止
             thread::sleep(Duration::from_millis(100));
+
+            // Windows: 恢复鼠标样式为箭头
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{LoadCursorW, SetCursor, IDC_ARROW};
+                let arrow_cursor = LoadCursorW(None, IDC_ARROW).ok();
+                if let Some(cursor) = arrow_cursor {
+                    SetCursor(cursor);
+                }
+            }
+
             Ok((x, y))
         }
         Err(_) => {
             // 超时,设置停止标志
             stop_flag.store(true, Ordering::Relaxed);
+
+            // Windows: 恢复鼠标样式为箭头
+            #[cfg(target_os = "windows")]
+            unsafe {
+                use windows::Win32::UI::WindowsAndMessaging::{LoadCursorW, SetCursor, IDC_ARROW};
+                let arrow_cursor = LoadCursorW(None, IDC_ARROW).ok();
+                if let Some(cursor) = arrow_cursor {
+                    SetCursor(cursor);
+                }
+            }
+
             Err("等待鼠标点击超时(30秒)".to_string())
         }
     }

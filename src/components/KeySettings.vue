@@ -113,6 +113,10 @@ const initLocalState = () => {
   localSimulationSettings.noteToKey = { ...(settings.simulationSettings?.noteToKey || {}) };
   localSimulationSettings.noteToMouse = { ...(settings.simulationSettings?.noteToMouse || {}) };
 
+  // 调试日志
+  info(`[KeySettings.vue] 加载配置 - simulationType: ${localSimulationSettings.simulationType}`);
+  info(`[KeySettings.vue] 加载配置 - noteToMouse: ${JSON.stringify(localSimulationSettings.noteToMouse)}`);
+
   updateDropdownsFromNote('min', localAnalyzerSettings.minNote);
   updateDropdownsFromNote('max', localAnalyzerSettings.maxNote);
 };
@@ -122,6 +126,18 @@ onMounted(() => {
   initLocalState();
   info("[KeySettings.vue] 加载按键设置");
 });
+
+// 监听模拟类型切换,重新加载 noteToMouse
+watch(() => localSimulationSettings.simulationType, (newType) => {
+  info(`[KeySettings.vue] 切换模拟类型到: ${newType}`);
+  if (newType === 'mouse') {
+    // 切换到鼠标模拟时,重新从配置加载 noteToMouse
+    const settings = settingsManager.getSettings();
+    localSimulationSettings.noteToMouse = { ...(settings.simulationSettings?.noteToMouse || {}) };
+    info(`[KeySettings.vue] 重新加载 noteToMouse: ${JSON.stringify(localSimulationSettings.noteToMouse)}`);
+  }
+});
+
 
 // 监听下拉框变化更新设置
 watch([minNoteGroup, minNoteValue], ([newGroup, newNote]) => {
@@ -294,13 +310,24 @@ const saveSettings = async () => {
 
   // 保留原有的 noteToMouse 配置(不清空鼠标坐标设置)
   const currentSettings = settingsManager.getSettings();
+
+  // 如果当前是鼠标模拟,使用 localSimulationSettings 的 noteToMouse
+  // 否则从配置文件读取以保留原有配置
+  const noteToMouseToSave = localSimulationSettings.simulationType === 'mouse'
+    ? localSimulationSettings.noteToMouse
+    : (currentSettings.simulationSettings?.noteToMouse || {});
+
   const settings = {
     analyzerSetting: { ...localAnalyzerSettings },
     simulationSettings: {
       ...localSimulationSettings,
-      noteToMouse: currentSettings.simulationSettings?.noteToMouse || {}
+      noteToMouse: noteToMouseToSave
     }
   };
+
+  // 调试日志
+  info(`[KeySettings.vue] 保存配置 - simulationType: ${localSimulationSettings.simulationType}`);
+  info(`[KeySettings.vue] 保存配置 - noteToMouse: ${JSON.stringify(noteToMouseToSave)}`);
 
   await settingsManager.saveSettings(settings);
 
@@ -311,7 +338,7 @@ const saveSettings = async () => {
     oldAnalyzerSetting.trimLongNotes !== localAnalyzerSettings.trimLongNotes;
 
   info("[KeySettings.vue] 按键设置已保存");
-  
+
   // 显示 Toast 通知
   toastMessage.value = "按键设置已保存!" + (analyzerSettingChanged ? "\n音域设置已变更,请重新选择MIDI文件以应用新设置。" : "");
   toastType.value = analyzerSettingChanged ? 'warning' : 'success';
@@ -322,13 +349,8 @@ const saveSettings = async () => {
 <template>
   <div class="key-settings-view">
     <!-- Toast 通知 -->
-    <Toast 
-      :visible="toastVisible" 
-      @update:visible="toastVisible = $event"
-      :message="toastMessage"
-      :type="toastType"
-    />
-    
+    <Toast :visible="toastVisible" @update:visible="toastVisible = $event" :message="toastMessage" :type="toastType" />
+
     <!-- 保存按钮 -->
     <div class="top-actions">
       <button @click="saveSettings" class="btn btn-primary">
@@ -401,7 +423,7 @@ const saveSettings = async () => {
                 <span class="slider round"></span>
               </label>
               <span class="switch-label">{{ localAnalyzerSettings.blackKeyMode === 'support_black_key' ? '支持黑键' : '黑键降音'
-                }}</span>
+              }}</span>
             </div>
 
             <!-- 长音修剪开关 -->
