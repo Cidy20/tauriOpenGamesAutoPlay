@@ -1,10 +1,9 @@
 ```vue
 <script setup lang="ts">
-import { ref, defineProps, watch, onMounted, onUnmounted, computed, inject } from "vue";
+import { ref, watch, onMounted, onUnmounted, computed, inject } from "vue";
 import { invoke } from "@tauri-apps/api/core";
 import { info, error } from '@tauri-apps/plugin-log';
 import { getNoteName, groupForNote } from "../config/groups";
-import { NOTE_TO_KEY } from "../config/keyboard_mapping";
 
 const props = defineProps({
   selectedMidiFile: { type: [String, null], default: null },
