@@ -51,7 +51,6 @@ const saveSettings = async () => {
 
 <template>
   <div class="shortcut-settings-view">
-    <h2 class="view-title">快捷键设置</h2>
 
     <div class="settings-content">
       <div class="setting-section">
